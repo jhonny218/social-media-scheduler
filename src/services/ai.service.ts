@@ -19,15 +19,18 @@ interface GeminiResponse {
   }>;
 }
 
-async function callGemini(prompt: string, imageBase64?: string): Promise<string> {
+async function callGemini(prompt: string, images?: string | string[]): Promise<string> {
   if (!GEMINI_API_KEY) {
     throw new Error('Gemini API key not configured');
   }
 
   const parts: Array<{ text: string } | { inline_data: { mime_type: string; data: string } }> = [];
 
-  // Add image if provided
-  if (imageBase64) {
+  // Normalize images to array
+  const imageArray = images ? (Array.isArray(images) ? images : [images]) : [];
+
+  // Add images if provided
+  for (const imageBase64 of imageArray) {
     // Extract base64 data from data URL if needed
     const base64Data = imageBase64.includes('base64,')
       ? imageBase64.split('base64,')[1]
@@ -93,14 +96,28 @@ async function blobUrlToBase64(blobUrl: string): Promise<string> {
 
 export class AIService {
   async generateCaption(request: CaptionGenerationRequest): Promise<CaptionGenerationResponse> {
-    const { imageUrl, tone, includeHashtags, maxLength = 2200 } = request;
+    const { imageUrl, imageUrls, isVideo, tone, includeHashtags, maxLength = 2200 } = request;
 
-    // Convert blob URL to base64 if needed
-    let imageBase64: string | undefined;
-    if (imageUrl.startsWith('blob:')) {
-      imageBase64 = await blobUrlToBase64(imageUrl);
-    } else if (imageUrl.startsWith('data:')) {
-      imageBase64 = imageUrl;
+    // Convert URLs to base64
+    const processedImages: string[] = [];
+
+    // Handle multiple images (video frames)
+    if (imageUrls && imageUrls.length > 0) {
+      for (const url of imageUrls) {
+        if (url.startsWith('blob:')) {
+          processedImages.push(await blobUrlToBase64(url));
+        } else if (url.startsWith('data:')) {
+          processedImages.push(url);
+        }
+      }
+    }
+    // Handle single image
+    else if (imageUrl) {
+      if (imageUrl.startsWith('blob:')) {
+        processedImages.push(await blobUrlToBase64(imageUrl));
+      } else if (imageUrl.startsWith('data:')) {
+        processedImages.push(imageUrl);
+      }
     }
 
     const toneDescriptions: Record<string, string> = {
@@ -110,7 +127,12 @@ export class AIService {
       inspirational: 'motivating, uplifting, and thought-provoking',
     };
 
-    const prompt = `You are an expert Instagram content creator. Analyze this image and write a captivating Instagram caption in a warm, reflective, authentic style similar to @prana_with_love that feels personal and inspiring.
+    // Different prompt for video content vs single image
+    const contentDescription = isVideo
+      ? 'These images are frames extracted from different parts of a video/Reel. Analyze ALL the frames together to understand the complete video content, story, and mood.'
+      : 'Analyze this image';
+
+    const prompt = `You are an expert Instagram content creator. ${contentDescription} Write a captivating Instagram caption in a warm, reflective, authentic style similar to @prana_with_love that feels personal and inspiring.
 
 Requirements:
 - Tone: ${toneDescriptions[tone] || tone}
@@ -118,11 +140,12 @@ Requirements:
 - Make it engaging and encourage interaction (e.g., ask a gentle question, invite reflection, or evoke gratitude)
 - Use heartfelt, genuine language and simple, joyful imagery that feels grounded and human
 - Include subtle emotional cues (e.g., thankful, blessed, love, life, journey) without sounding generic
+${isVideo ? '- Consider this is for a Reel/video post - make it dynamic and engaging' : ''}
 ${includeHashtags ? '- Include 5-10 relevant hashtags at the end' : '- Do NOT include any hashtags'}
 
 IMPORTANT: Return ONLY the caption text, nothing else. No explanations, no labels, just the caption.`;
 
-    const result = await callGemini(prompt, imageBase64);
+    const result = await callGemini(prompt, processedImages.length > 0 ? processedImages : undefined);
 
     // Clean up the response
     const caption = result.trim();

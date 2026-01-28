@@ -11,6 +11,7 @@ const dbRowToPost = (row: any): ScheduledPost => ({
   postType: row.post_type as ScheduledPost['postType'],
   caption: row.caption || undefined,
   media: (row.media as PostMedia[]) || [],
+  reelCover: row.reel_cover || undefined,
   scheduledTime: row.scheduled_time,
   status: row.status as PostStatus,
   publishMethod: row.publish_method as ScheduledPost['publishMethod'],
@@ -156,6 +157,7 @@ export class PostsService {
       status: 'scheduled',
       publish_method: input.publishMethod,
       first_comment: input.firstComment || null,
+      reel_cover: input.reelCover || null,
       created_at: now,
       updated_at: now,
     };
@@ -190,6 +192,7 @@ export class PostsService {
     if (updates.status) updateData.status = updates.status;
     if (updates.firstComment !== undefined) updateData.first_comment = updates.firstComment;
     if (updates.postType) updateData.post_type = updates.postType;
+    if (updates.reelCover !== undefined) updateData.reel_cover = updates.reelCover;
 
     const { error } = await supabase
       .from(TABLES.SCHEDULED_POSTS)

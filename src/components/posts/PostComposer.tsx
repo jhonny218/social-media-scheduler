@@ -82,6 +82,7 @@ const PostComposer: React.FC<PostComposerProps> = ({
   const [hashtagLoading, setHashtagLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [captionTone, setCaptionTone] = useState<'casual' | 'professional' | 'playful' | 'inspirational'>('casual');
+  const [reelCover, setReelCover] = useState<{ type: 'frame' | 'custom'; data: string; timestamp?: number } | null>(null);
 
   const {
     control,
@@ -112,8 +113,16 @@ const PostComposer: React.FC<PostComposerProps> = ({
       reset();
       setFiles([]);
       setError(null);
+      setReelCover(null);
     }
   }, [open, reset]);
+
+  // Clear reel cover when post type changes away from reel
+  useEffect(() => {
+    if (postType !== 'reel') {
+      setReelCover(null);
+    }
+  }, [postType]);
 
   // Set default account when accounts load
   useEffect(() => {
@@ -121,6 +130,54 @@ const PostComposer: React.FC<PostComposerProps> = ({
       setValue('accountId', accounts[0].id);
     }
   }, [accounts, accountId, setValue]);
+
+  // Determine available post types based on uploaded files
+  const getAvailablePostTypes = (fileList: UploadedFile[]) => {
+    const imageCount = fileList.filter(f => f.type === 'image').length;
+    const videoCount = fileList.filter(f => f.type === 'video').length;
+    const totalCount = fileList.length;
+
+    // No files - all types available
+    if (totalCount === 0) {
+      return { feed: true, story: true, reel: true, carousel: true };
+    }
+
+    // Multiple files - only carousel
+    if (totalCount > 1) {
+      return { feed: false, story: false, reel: false, carousel: true };
+    }
+
+    // Single image - feed or story only
+    if (imageCount === 1 && videoCount === 0) {
+      return { feed: true, story: true, reel: false, carousel: false };
+    }
+
+    // Single video - feed, story, or reel
+    if (videoCount === 1 && imageCount === 0) {
+      return { feed: true, story: true, reel: true, carousel: false };
+    }
+
+    return { feed: true, story: true, reel: true, carousel: true };
+  };
+
+  const availablePostTypes = getAvailablePostTypes(files);
+
+  // Auto-switch post type when current selection becomes unavailable
+  useEffect(() => {
+    const available = getAvailablePostTypes(files);
+    if (!available[postType as keyof typeof available]) {
+      // Find first available type
+      if (available.carousel) {
+        setValue('postType', 'carousel');
+      } else if (available.feed) {
+        setValue('postType', 'feed');
+      } else if (available.story) {
+        setValue('postType', 'story');
+      } else if (available.reel) {
+        setValue('postType', 'reel');
+      }
+    }
+  }, [files, postType, setValue]);
 
   const handleFilesChange = (newFiles: UploadedFile[]) => {
     setFiles(newFiles);
@@ -130,30 +187,132 @@ const PostComposer: React.FC<PostComposerProps> = ({
     setFiles((prev) => prev.filter((f) => f.id !== fileId));
   };
 
+  // Extract multiple frames from video for caption generation
+  const extractVideoFrames = (videoUrl: string, frameCount: number = 6): Promise<string[]> => {
+    return new Promise((resolve, reject) => {
+      const video = document.createElement('video');
+      const canvas = document.createElement('canvas');
+      const ctx = canvas.getContext('2d');
+      const frames: string[] = [];
+
+      video.crossOrigin = videoUrl.startsWith('blob:') ? '' : 'anonymous';
+      video.muted = true;
+      video.playsInline = true;
+
+      let currentFrameIndex = 0;
+      let duration = 0;
+
+      video.onloadedmetadata = () => {
+        duration = video.duration;
+        canvas.width = Math.min(video.videoWidth, 720); // Limit size for API
+        canvas.height = Math.min(video.videoHeight, 1280);
+        // Start extracting first frame
+        video.currentTime = 0;
+      };
+
+      video.onseeked = () => {
+        try {
+          ctx?.drawImage(video, 0, 0, canvas.width, canvas.height);
+          const dataUrl = canvas.toDataURL('image/jpeg', 0.7);
+          frames.push(dataUrl);
+          currentFrameIndex++;
+
+          if (currentFrameIndex < frameCount) {
+            // Move to next frame position (spread evenly across video)
+            const nextTime = (duration / frameCount) * currentFrameIndex;
+            video.currentTime = Math.min(nextTime, duration - 0.1);
+          } else {
+            // All frames extracted
+            resolve(frames);
+          }
+        } catch (e) {
+          // CORS error - resolve with whatever frames we have
+          if (frames.length > 0) {
+            resolve(frames);
+          } else {
+            reject(e);
+          }
+        }
+      };
+
+      video.onerror = () => {
+        if (frames.length > 0) {
+          resolve(frames);
+        } else {
+          reject(new Error('Failed to load video'));
+        }
+      };
+
+      setTimeout(() => {
+        if (frames.length > 0) {
+          resolve(frames);
+        } else {
+          reject(new Error('Video loading timeout'));
+        }
+      }, 15000);
+
+      video.src = videoUrl;
+      video.load();
+    });
+  };
+
   // Generate AI caption
   const handleGenerateCaption = async () => {
     if (files.length === 0) {
-      toast.error('Please upload an image first');
+      toast.error('Please upload media first');
       return;
     }
 
     setAiLoading(true);
     try {
       const imageFile = files.find((f) => f.type === 'image');
-      if (!imageFile) {
-        toast.error('Please upload an image for caption generation');
+      const videoFile = files.find((f) => f.type === 'video');
+
+      // For images, use single image
+      if (imageFile) {
+        const result = await instagramService.generateCaption({
+          imageUrl: imageFile.preview,
+          tone: captionTone,
+          includeHashtags: false,
+        });
+        setValue('caption', result.caption);
+        toast.success('Caption generated!');
         return;
       }
 
-      // Convert file to base64 for preview (in real app, upload to storage first)
-      const result = await instagramService.generateCaption({
-        imageUrl: imageFile.preview,
-        tone: captionTone,
-        includeHashtags: false,
-      });
+      // For reels/videos, extract multiple frames
+      if (videoFile) {
+        toast.loading('Analyzing video content...', { id: 'extract-frames' });
+        try {
+          const frames = await extractVideoFrames(videoFile.preview, 6);
+          toast.dismiss('extract-frames');
 
-      setValue('caption', result.caption);
-      toast.success('Caption generated!');
+          if (frames.length === 0) {
+            toast.error('Could not analyze video. Please try again.');
+            return;
+          }
+
+          toast.loading(`Generating caption from ${frames.length} video frames...`, { id: 'generate-caption' });
+
+          const result = await instagramService.generateCaption({
+            imageUrls: frames,
+            isVideo: true,
+            tone: captionTone,
+            includeHashtags: false,
+          });
+
+          toast.dismiss('generate-caption');
+          setValue('caption', result.caption);
+          toast.success('Caption generated!');
+        } catch {
+          toast.dismiss('extract-frames');
+          toast.dismiss('generate-caption');
+          toast.error('Could not analyze video content');
+        }
+        return;
+      }
+
+      toast.error('Please upload an image or video');
     } catch {
       toast.error('Failed to generate caption');
     } finally {
@@ -271,6 +430,7 @@ const PostComposer: React.FC<PostComposerProps> = ({
           media: uploadedMedia,
           scheduledTime: data.scheduledTime,
           firstComment: data.firstComment,
+          reelCover: data.postType === 'reel' ? reelCover || undefined : undefined,
         });
         toast.success('Post updated successfully!');
       } else {
@@ -284,6 +444,7 @@ const PostComposer: React.FC<PostComposerProps> = ({
             scheduledTime: data.scheduledTime,
             publishMethod: 'auto',
             firstComment: data.firstComment,
+            reelCover: data.postType === 'reel' ? reelCover || undefined : undefined,
           },
           account.igUserId
         );
@@ -308,8 +469,8 @@ const PostComposer: React.FC<PostComposerProps> = ({
         onClose={onClose}
         maxWidth="md"
         fullWidth
-        PaperProps={{
-          sx: { borderRadius: 2 },
+        slotProps={{
+          paper: { sx: { borderRadius: 2 } },
         }}
       >
         <DialogTitle
@@ -382,19 +543,19 @@ const PostComposer: React.FC<PostComposerProps> = ({
                     onChange={(_, value) => value && field.onChange(value)}
                     sx={{ flexWrap: 'wrap', gap: 1 }}
                   >
-                    <ToggleButton value="feed" sx={{ px: 3 }}>
+                    <ToggleButton value="feed" sx={{ px: 3 }} disabled={!availablePostTypes.feed}>
                       <ImageIcon sx={{ mr: 1 }} />
                       Feed
                     </ToggleButton>
-                    <ToggleButton value="story" sx={{ px: 3 }}>
+                    <ToggleButton value="story" sx={{ px: 3 }} disabled={!availablePostTypes.story}>
                       <StoryIcon sx={{ mr: 1 }} />
                       Story
                     </ToggleButton>
-                    <ToggleButton value="reel" sx={{ px: 3 }}>
+                    <ToggleButton value="reel" sx={{ px: 3 }} disabled={!availablePostTypes.reel}>
                       <ReelIcon sx={{ mr: 1 }} />
                       Reel
                     </ToggleButton>
-                    <ToggleButton value="carousel" sx={{ px: 3 }}>
+                    <ToggleButton value="carousel" sx={{ px: 3 }} disabled={!availablePostTypes.carousel}>
                       <CarouselIcon sx={{ mr: 1 }} />
                       Carousel
                     </ToggleButton>
@@ -412,9 +573,38 @@ const PostComposer: React.FC<PostComposerProps> = ({
                 files={files}
                 onFilesChange={handleFilesChange}
                 onFileRemove={handleFileRemove}
-                maxFiles={postType === 'carousel' ? 10 : 1}
-                acceptVideo={postType === 'reel' || postType === 'story'}
+                maxFiles={postType === 'reel' ? 1 : 10}
+                acceptVideo={true}
+                videoOnly={postType === 'reel'}
+                showCoverSelector={postType === 'reel'}
+                coverData={reelCover}
+                onCoverChange={setReelCover}
               />
+              {/* Reel cover preview */}
+              {postType === 'reel' && reelCover && (
+                <Box sx={{ mt: 2, display: 'flex', alignItems: 'center', gap: 2 }}>
+                  <Box
+                    component="img"
+                    src={reelCover.data}
+                    sx={{
+                      width: 60,
+                      height: 80,
+                      objectFit: 'cover',
+                      borderRadius: 1,
+                      border: '2px solid',
+                      borderColor: 'primary.main',
+                    }}
+                  />
+                  <Box>
+                    <Typography variant="body2" fontWeight={500}>
+                      Cover Image Selected
+                    </Typography>
+                    <Typography variant="caption" color="text.secondary">
+                      {reelCover.type === 'frame' ? 'Video Frame' : 'Custom Image'}
+                    </Typography>
+                  </Box>
+                </Box>
+              )}
             </Box>
 
             {/* Caption */}

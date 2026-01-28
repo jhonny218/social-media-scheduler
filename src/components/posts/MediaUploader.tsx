@@ -25,6 +25,7 @@ import {
   Videocam as VideoIcon,
   PhotoLibrary as LibraryIcon,
   DragIndicator as DragIcon,
+  PhotoCamera as CoverIcon,
 } from '@mui/icons-material';
 import { useDropzone, FileRejection } from 'react-dropzone';
 import { DragDropContext, Droppable, Draggable, DropResult } from '@hello-pangea/dnd';
@@ -32,6 +33,7 @@ import toast from 'react-hot-toast';
 import { useAuth } from '../../hooks/useAuth';
 import { MediaService } from '../../services/media.service';
 import { MediaItem } from '../../types';
+import ReelCoverSelector from './ReelCoverSelector';
 
 export interface UploadedFile {
   id: string;
@@ -48,17 +50,26 @@ export interface UploadedFile {
 interface MediaUploaderProps {
   maxFiles?: number;
   acceptVideo?: boolean;
+  videoOnly?: boolean; // For Reels - only accept videos
   files: UploadedFile[];
   onFilesChange: (files: UploadedFile[]) => void;
   onFileRemove: (fileId: string) => void;
+  // Reel cover props
+  showCoverSelector?: boolean;
+  coverData?: { type: 'frame' | 'custom'; data: string; timestamp?: number } | null;
+  onCoverChange?: (cover: { type: 'frame' | 'custom'; data: string; timestamp?: number } | null) => void;
 }
 
 const MediaUploader: React.FC<MediaUploaderProps> = ({
   maxFiles = 10,
   acceptVideo = true,
+  videoOnly = false,
   files,
   onFilesChange,
   onFileRemove,
+  showCoverSelector = false,
+  coverData,
+  onCoverChange,
 }) => {
   const { user } = useAuth();
   const [isDragActive, setIsDragActive] = useState(false);
@@ -67,8 +78,10 @@ const MediaUploader: React.FC<MediaUploaderProps> = ({
   const [libraryLoading, setLibraryLoading] = useState(false);
   const [selectedLibraryItems, setSelectedLibraryItems] = useState<Set<string>>(new Set());
   const [libraryTab, setLibraryTab] = useState<'all' | 'image' | 'video'>('all');
+  const [coverSelectorOpen, setCoverSelectorOpen] = useState(false);
 
   const isCarousel = maxFiles > 1;
+  const isReel = videoOnly;
 
   // Load media library
   useEffect(() => {
@@ -120,20 +133,28 @@ const MediaUploader: React.FC<MediaUploaderProps> = ({
     [files, maxFiles, onFilesChange]
   );
 
+  // Build accept config based on videoOnly and acceptVideo props
+  const acceptConfig = videoOnly
+    ? {
+        'video/mp4': ['.mp4'],
+        'video/quicktime': ['.mov'],
+      }
+    : {
+        'image/jpeg': ['.jpg', '.jpeg'],
+        'image/png': ['.png'],
+        'image/gif': ['.gif'],
+        'image/webp': ['.webp'],
+        ...(acceptVideo && {
+          'video/mp4': ['.mp4'],
+          'video/quicktime': ['.mov'],
+        }),
+      };
+
   const { getRootProps, getInputProps, open: openFilePicker } = useDropzone({
     onDrop,
     onDragEnter: () => setIsDragActive(true),
     onDragLeave: () => setIsDragActive(false),
-    accept: {
-      'image/jpeg': ['.jpg', '.jpeg'],
-      'image/png': ['.png'],
-      'image/gif': ['.gif'],
-      'image/webp': ['.webp'],
-      ...(acceptVideo && {
-        'video/mp4': ['.mp4'],
-        'video/quicktime': ['.mov'],
-      }),
-    },
+    accept: acceptConfig,
     maxSize: 100 * 1024 * 1024,
     multiple: isCarousel,
     noClick: files.length > 0,
@@ -216,6 +237,9 @@ const MediaUploader: React.FC<MediaUploaderProps> = ({
   };
 
   const filteredLibraryMedia = libraryMedia.filter((item) => {
+    // For reels (videoOnly), only show videos
+    if (videoOnly) return item.fileType === 'video';
+
     if (libraryTab === 'all') return true;
     if (libraryTab === 'image') return item.fileType === 'image';
     if (libraryTab === 'video') return item.fileType === 'video';
@@ -225,6 +249,10 @@ const MediaUploader: React.FC<MediaUploaderProps> = ({
     if (!acceptVideo && item.fileType === 'video') return false;
     return true;
   });
+
+  // Get video URL for cover selector (first video file)
+  const videoFile = files.find(f => f.type === 'video');
+  const videoUrl = videoFile?.preview || '';
 
   const renderMediaPreview = (file: UploadedFile, index: number, isDragging?: boolean) => (
     <Paper
@@ -409,7 +437,7 @@ const MediaUploader: React.FC<MediaUploaderProps> = ({
                 : 'Drag & drop files here, or click to select'}
             </Typography>
             <Typography variant="body2" color="text.secondary">
-              Supports: JPG, PNG, GIF, WebP{acceptVideo && ', MP4, MOV'}
+              {videoOnly ? 'Supports: MP4, MOV' : `Supports: JPG, PNG, GIF, WebP${acceptVideo ? ', MP4, MOV' : ''}`}
             </Typography>
             <Typography variant="caption" color="text.secondary">
               Max file size: 100MB | Max {maxFiles} file{maxFiles > 1 ? 's' : ''}
@@ -457,6 +485,18 @@ const MediaUploader: React.FC<MediaUploaderProps> = ({
               <Typography variant="caption" color="text.secondary" sx={{ ml: 'auto', alignSelf: 'center' }}>
                 Drag to reorder • {files.length}/{maxFiles} files
               </Typography>
+            )}
+            {/* Select Cover button for Reels */}
+            {showCoverSelector && videoUrl && (
+              <Button
+                size="small"
+                variant="outlined"
+                startIcon={<CoverIcon />}
+                onClick={() => setCoverSelectorOpen(true)}
+                sx={{ ml: isCarousel ? 0 : 'auto' }}
+              >
+                {coverData ? 'Change Cover' : 'Select Cover'}
+              </Button>
             )}
           </Box>
 
@@ -685,6 +725,20 @@ const MediaUploader: React.FC<MediaUploaderProps> = ({
           </Button>
         </DialogActions>
       </Dialog>
+
+      {/* Reel Cover Selector Dialog */}
+      {showCoverSelector && videoUrl && (
+        <ReelCoverSelector
+          open={coverSelectorOpen}
+          onClose={() => setCoverSelectorOpen(false)}
+          videoUrl={videoUrl}
+          onSelectCover={(cover) => {
+            onCoverChange?.(cover);
+            setCoverSelectorOpen(false);
+          }}
+          initialCover={coverData || undefined}
+        />
+      )}
     </Box>
   );
 };

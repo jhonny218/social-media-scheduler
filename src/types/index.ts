@@ -60,6 +60,13 @@ export interface PostMedia {
   thumbnailUrl?: string;
 }
 
+// Reel cover type
+export interface ReelCover {
+  type: 'frame' | 'custom';
+  data: string; // Base64 data URL or image URL
+  timestamp?: number; // Video timestamp if type is 'frame'
+}
+
 export interface ScheduledPost {
   id: string;
   userId: string;
@@ -77,6 +84,7 @@ export interface ScheduledPost {
   permalink?: string;
   publishedAt?: string;
   firstComment?: string;
+  reelCover?: ReelCover;
   errorMessage?: string;
   createdAt: string;
   updatedAt: string;
@@ -91,6 +99,7 @@ export interface PostInput {
   scheduledTime: Date;
   publishMethod: PublishMethod;
   firstComment?: string;
+  reelCover?: ReelCover;
 }
 
 // Media Library types
@@ -144,7 +153,9 @@ export interface AccountInsights {
 
 // AI Caption types
 export interface CaptionGenerationRequest {
-  imageUrl: string;
+  imageUrl?: string;
+  imageUrls?: string[]; // Multiple images/frames for video content
+  isVideo?: boolean; // Flag to indicate this is video content
   tone: 'casual' | 'professional' | 'playful' | 'inspirational';
   includeHashtags: boolean;
   maxLength?: number;
