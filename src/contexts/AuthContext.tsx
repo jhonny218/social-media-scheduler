@@ -230,7 +230,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
 
     // Subscribe to auth changes - this fires INITIAL_SESSION on mount
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      async (event, session) => {
+      (event, session) => {
         if (!mounted) return;
 
         // Skip if already processing or if this is a duplicate INITIAL_SESSION
@@ -238,7 +238,14 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
           return;
         }
 
-        await handleAuthChange(event, session?.user?.id || null);
+        // Defer database calls to avoid deadlock with Supabase client's internal lock
+        // The Supabase client holds a lock during auth state processing, so making
+        // database queries inside this callback causes them to wait indefinitely
+        setTimeout(() => {
+          if (mounted) {
+            handleAuthChange(event, session?.user?.id || null);
+          }
+        }, 0);
       }
     );
 
