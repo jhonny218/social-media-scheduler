@@ -106,7 +106,7 @@ const MediaUploader: React.FC<MediaUploaderProps> = ({
       }
 
       const newFiles: UploadedFile[] = acceptedFiles.map((file) => ({
-        id: `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+        id: `${Date.now()}-${Math.random().toString(36).substring(2, 11)}`,
         file,
         preview: URL.createObjectURL(file),
         type: file.type.startsWith('video/') ? 'video' : 'image',
@@ -524,7 +524,7 @@ const MediaUploader: React.FC<MediaUploaderProps> = ({
         onClose={handleLibraryClose}
         maxWidth="md"
         fullWidth
-        PaperProps={{ sx: { height: '80vh' } }}
+        slotProps={{ paper: { sx: { height: '80vh' } } }}
       >
         <DialogTitle sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <Typography variant="h6">Select from Media Library</Typography>

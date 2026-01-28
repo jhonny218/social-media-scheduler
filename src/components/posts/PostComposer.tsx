@@ -204,12 +204,27 @@ const PostComposer: React.FC<PostComposerProps> = ({
     setError(null);
 
     try {
-      // Upload files to Supabase Storage
+      // Upload files to Supabase Storage (skip media library items - already uploaded)
       const mediaService = new MediaService(user.uid);
       const uploadedMedia: PostMedia[] = [];
 
       for (let i = 0; i < files.length; i++) {
         const file = files[i];
+
+        // If from media library, use existing media item data
+        if (file.isFromLibrary && file.mediaItem) {
+          uploadedMedia.push({
+            id: file.mediaItem.id,
+            url: file.mediaItem.downloadUrl,
+            type: file.mediaItem.fileType,
+            order: i,
+          });
+          continue;
+        }
+
+        // Otherwise, upload the new file
+        if (!file.file) continue;
+
         setFiles((prev) =>
           prev.map((f) =>
             f.id === file.id ? { ...f, progress: 10 } : f

@@ -10,8 +10,10 @@ export interface UploadProgress {
 
 export type UploadProgressCallback = (progress: UploadProgress) => void;
 
+const SIGNED_URL_EXPIRY_SECONDS = 60 * 60;
+
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-const dbRowToMediaItem = (row: any): MediaItem => ({
+const dbRowToMediaItem = (row: any, signedUrl?: string | null): MediaItem => ({
   id: row.id,
   userId: row.user_id,
   fileName: row.file_name,
@@ -19,7 +21,7 @@ const dbRowToMediaItem = (row: any): MediaItem => ({
   mimeType: row.mime_type,
   fileSize: row.file_size,
   storagePath: row.storage_path,
-  downloadUrl: row.download_url,
+  downloadUrl: signedUrl || row.download_url,
   thumbnailUrl: row.thumbnail_url || undefined,
   width: row.width || undefined,
   height: row.height || undefined,
@@ -52,6 +54,50 @@ export class MediaService {
     return `${uuid}.${extension}`;
   }
 
+  private async createSignedUrl(storagePath: string): Promise<string> {
+    const { data, error } = await supabase.storage
+      .from(STORAGE_BUCKETS.MEDIA)
+      .createSignedUrl(storagePath, SIGNED_URL_EXPIRY_SECONDS);
+
+    if (error || !data?.signedUrl) {
+      throw new Error(error?.message || 'Failed to create signed URL');
+    }
+
+    return data.signedUrl;
+  }
+
+  // Attach signed URLs for private bucket access
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  private async attachSignedUrls(rows: any[]): Promise<MediaItem[]> {
+    if (!rows.length) return [];
+
+    const paths = rows
+      .map((row) => row.storage_path)
+      .filter((path: string | null) => Boolean(path));
+
+    if (!paths.length) {
+      return rows.map((row) => dbRowToMediaItem(row));
+    }
+
+    const { data: signedData, error } = await supabase.storage
+      .from(STORAGE_BUCKETS.MEDIA)
+      .createSignedUrls(paths, SIGNED_URL_EXPIRY_SECONDS);
+
+    if (error || !signedData) {
+      return rows.map((row) => dbRowToMediaItem(row));
+    }
+
+    const urlByPath = new Map(
+      signedData
+        .filter((entry) => entry.path && !entry.error)
+        .map((entry) => [entry.path as string, entry.signedUrl])
+    );
+
+    return rows.map((row) =>
+      dbRowToMediaItem(row, urlByPath.get(row.storage_path) || row.download_url)
+    );
+  }
+
   // Upload a file to Supabase Storage
   async uploadFile(
     file: File,
@@ -70,12 +116,20 @@ export class MediaService {
       });
     }
 
-    // Upload to Supabase Storage
+    const { data: signedUpload, error: signedUploadError } = await supabase.storage
+      .from(STORAGE_BUCKETS.MEDIA)
+      .createSignedUploadUrl(storagePath, { upsert: false });
+
+    if (signedUploadError || !signedUpload?.token) {
+      throw new Error(`Failed to create signed upload URL: ${signedUploadError?.message || 'Unknown error'}`);
+    }
+
+    // Upload to Supabase Storage using signed URL
     const { error: uploadError } = await supabase.storage
       .from(STORAGE_BUCKETS.MEDIA)
-      .upload(storagePath, file, {
+      .uploadToSignedUrl(storagePath, signedUpload.token, file, {
         cacheControl: '3600',
-        upsert: false,
+        contentType: file.type,
       });
 
     if (uploadError) {
@@ -90,12 +144,13 @@ export class MediaService {
       });
     }
 
-    // Get public URL
-    const { data: urlData } = supabase.storage
-      .from(STORAGE_BUCKETS.MEDIA)
-      .getPublicUrl(storagePath);
-
-    const downloadUrl = urlData.publicUrl;
+    let downloadUrl = '';
+    try {
+      downloadUrl = await this.createSignedUrl(storagePath);
+    } catch (error) {
+      await supabase.storage.from(STORAGE_BUCKETS.MEDIA).remove([storagePath]);
+      throw error;
+    }
 
     // Get image dimensions if it's an image
     let width: number | undefined;
@@ -134,7 +189,7 @@ export class MediaService {
       throw new Error(`Failed to save media: ${insertError.message}`);
     }
 
-    return dbRowToMediaItem(data);
+    return dbRowToMediaItem(data, downloadUrl);
   }
 
   // Get image dimensions
@@ -184,7 +239,7 @@ export class MediaService {
       throw new Error(`Failed to fetch media: ${error.message}`);
     }
 
-    return (data || []).map(dbRowToMediaItem);
+    return this.attachSignedUrls(data || []);
   }
 
   // Get recent media items
@@ -200,7 +255,7 @@ export class MediaService {
       throw new Error(`Failed to fetch media: ${error.message}`);
     }
 
-    return (data || []).map(dbRowToMediaItem);
+    return this.attachSignedUrls(data || []);
   }
 
   // Get media by type
@@ -216,7 +271,7 @@ export class MediaService {
       throw new Error(`Failed to fetch media: ${error.message}`);
     }
 
-    return (data || []).map(dbRowToMediaItem);
+    return this.attachSignedUrls(data || []);
   }
 
   // Get a single media item by ID
@@ -235,7 +290,16 @@ export class MediaService {
       throw new Error(`Failed to fetch media: ${error.message}`);
     }
 
-    return data ? dbRowToMediaItem(data) : null;
+    if (!data) return null;
+
+    let signedUrl: string | null = null;
+    try {
+      signedUrl = await this.createSignedUrl(data.storage_path);
+    } catch (signedError) {
+      console.warn('Failed to create signed URL for media:', signedError);
+    }
+
+    return dbRowToMediaItem(data, signedUrl || data.download_url);
   }
 
   // Delete a media item
