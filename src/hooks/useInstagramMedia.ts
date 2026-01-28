@@ -240,13 +240,13 @@ export const useInstagramMedia = (accountId?: string): UseInstagramMediaReturn =
     }
   }, [account?.id]); // Only re-fetch when account ID changes
 
-  // Auto-refresh every 5 minutes
+  // Auto-refresh every 30 minutes
   useEffect(() => {
     if (!account) return;
 
     const intervalId = setInterval(() => {
       refreshMedia();
-    }, 5 * 60 * 1000); // 5 minutes
+    }, 30 * 60 * 1000); // 30 minutes
 
     return () => clearInterval(intervalId);
   }, [account, refreshMedia]);
