@@ -523,7 +523,7 @@ const MediaLibrary: React.FC = () => {
                   </Typography>
                 </Box>
                 <Typography variant="body2" color="text.secondary">
-                  {format(item.uploadedAt.toDate(), 'MMM d, yyyy')}
+                  {format(new Date(item.uploadedAt), 'MMM d, yyyy')}
                 </Typography>
                 <IconButton onClick={(e) => handleMenuOpen(e, item)}>
                   <MoreIcon />
@@ -615,7 +615,7 @@ const MediaLibrary: React.FC = () => {
                   </Typography>
                 )}
                 <Typography variant="body2" color="text.secondary">
-                  Uploaded: {format(selectedMedia.uploadedAt.toDate(), 'MMMM d, yyyy h:mm a')}
+                  Uploaded: {format(new Date(selectedMedia.uploadedAt), 'MMMM d, yyyy h:mm a')}
                 </Typography>
               </Box>
             </DialogContent>

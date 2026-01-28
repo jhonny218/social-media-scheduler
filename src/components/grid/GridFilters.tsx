@@ -16,7 +16,6 @@ import {
   ToggleButton,
 } from '@mui/material';
 import {
-  Instagram as InstagramIcon,
   Movie as ReelIcon,
   Collections as CarouselIcon,
   GridView as GridIcon,
@@ -33,8 +32,6 @@ interface GridFiltersProps {
   onGridViewChange: (view: GridViewMode) => void;
   showCarousels: boolean;
   onShowCarouselsChange: (show: boolean) => void;
-  dateRange: string;
-  onDateRangeChange: (range: string) => void;
   totalPosts: number;
   filteredCount: number;
 }
@@ -47,8 +44,6 @@ const GridFilters: React.FC<GridFiltersProps> = ({
   onGridViewChange,
   showCarousels,
   onShowCarouselsChange,
-  dateRange,
-  onDateRangeChange,
   totalPosts,
   filteredCount,
 }) => {
@@ -73,12 +68,6 @@ const GridFilters: React.FC<GridFiltersProps> = ({
               label="Instagram Account"
               onChange={(e) => onAccountChange(e.target.value)}
             >
-              <MenuItem value="all">
-                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                  <InstagramIcon fontSize="small" />
-                  All Accounts
-                </Box>
-              </MenuItem>
               {accounts.map((account) => (
                 <MenuItem key={account.id} value={account.id}>
                   <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
@@ -92,21 +81,6 @@ const GridFilters: React.FC<GridFiltersProps> = ({
                   </Box>
                 </MenuItem>
               ))}
-            </Select>
-          </FormControl>
-
-          {/* Date Range Filter */}
-          <FormControl size="small" sx={{ minWidth: 140 }}>
-            <InputLabel>Time Range</InputLabel>
-            <Select
-              value={dateRange}
-              label="Time Range"
-              onChange={(e) => onDateRangeChange(e.target.value)}
-            >
-              <MenuItem value="7">Next 7 Days</MenuItem>
-              <MenuItem value="30">Next 30 Days</MenuItem>
-              <MenuItem value="90">Next 90 Days</MenuItem>
-              <MenuItem value="all">All Posts</MenuItem>
             </Select>
           </FormControl>
 

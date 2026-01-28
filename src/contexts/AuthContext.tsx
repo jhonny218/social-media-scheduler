@@ -30,6 +30,7 @@ interface AuthProviderProps {
 // Convert database row to User type
 const dbRowToUser = (row: any): User => ({
   id: row.id,
+  uid: row.id,
   email: row.email,
   displayName: row.display_name,
   photoURL: row.photo_url || undefined,
@@ -106,29 +107,30 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
 
   // Listen to auth state changes
   useEffect(() => {
-    // Get initial session
-    supabase.auth.getSession().then(async ({ data: { session } }) => {
-      if (session?.user) {
-        const userDoc = await fetchUserDoc(session.user.id);
-        setState({
-          user: userDoc,
-          loading: false,
-          error: null,
-        });
-      } else {
-        setState({
-          user: null,
-          loading: false,
-          error: null,
-        });
-      }
-    });
+    let isMounted = true;
 
-    // Listen for auth changes
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      async (event, session) => {
+    // Get initial session
+    const initializeSession = async () => {
+      try {
+        const { data: { session } } = await supabase.auth.getSession();
+        if (!isMounted) return;
+
         if (session?.user) {
           const userDoc = await fetchUserDoc(session.user.id);
+          if (!isMounted) return;
+
+          // If user doc doesn't exist, sign out the user
+          if (!userDoc) {
+            console.error('User document not found in database. Signing out...');
+            await supabase.auth.signOut();
+            setState({
+              user: null,
+              loading: false,
+              error: 'User profile not found. Please sign up again.',
+            });
+            return;
+          }
+
           setState({
             user: userDoc,
             loading: false,
@@ -141,10 +143,68 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
             error: null,
           });
         }
+      } catch (error) {
+        if (!isMounted) return;
+        const message = error instanceof Error ? error.message : 'Failed to initialize session';
+        setState({
+          user: null,
+          loading: false,
+          error: message,
+        });
+      }
+    };
+
+    initializeSession();
+
+    // Listen for auth changes
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(
+      async (event, session) => {
+        try {
+          if (session?.user) {
+            const userDoc = await fetchUserDoc(session.user.id);
+            if (!isMounted) return;
+
+            // If user doc doesn't exist, sign out the user
+            if (!userDoc) {
+              console.error('User document not found in database. Signing out...');
+              await supabase.auth.signOut();
+              setState({
+                user: null,
+                loading: false,
+                error: 'User profile not found. Please sign up again.',
+              });
+              return;
+            }
+
+            setState({
+              user: userDoc,
+              loading: false,
+              error: null,
+            });
+          } else {
+            if (!isMounted) return;
+            setState({
+              user: null,
+              loading: false,
+              error: null,
+            });
+          }
+        } catch (error) {
+          if (!isMounted) return;
+          const message = error instanceof Error ? error.message : 'Failed to process auth update';
+          setState({
+            user: null,
+            loading: false,
+            error: message,
+          });
+        }
       }
     );
 
-    return () => subscription.unsubscribe();
+    return () => {
+      isMounted = false;
+      subscription.unsubscribe();
+    };
   }, [fetchUserDoc]);
 
   // Sign in with email and password
@@ -162,6 +222,12 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       }
 
       const userDoc = await fetchUserDoc(data.user.id);
+
+      // If user doc doesn't exist, sign out and throw error
+      if (!userDoc) {
+        await supabase.auth.signOut();
+        throw new Error('User profile not found. Please contact support.');
+      }
 
       setState({
         user: userDoc,

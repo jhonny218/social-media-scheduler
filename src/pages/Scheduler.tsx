@@ -56,6 +56,8 @@ const Scheduler: React.FC = () => {
   const { isReordering, reorderPost } = useGridReorder(user?.uid || '');
 
   // State
+  // For grid view: specific account required
+  // For calendar/list view: 'all' is default
   const [selectedAccount, setSelectedAccount] = useState<string>('all');
   const [selectedStatus, setSelectedStatus] = useState<PostStatus | 'all'>('all');
   const [dateRange, setDateRange] = useState({
@@ -71,22 +73,29 @@ const Scheduler: React.FC = () => {
   }>({ open: false, postId: null });
 
   // Grid-specific filters
-  const [gridDateRange, setGridDateRange] = useState<string>('30');
   const [gridView, setGridView] = useState<'all' | 'reels'>('all');
   const [showCarousels, setShowCarousels] = useState(true);
+
+  // Set first Instagram account as default for grid view when accounts load
+  useEffect(() => {
+    if (viewMode === 'grid' && accounts.length > 0 && selectedAccount === 'all') {
+      setSelectedAccount(accounts[0].id);
+    }
+  }, [viewMode, accounts, selectedAccount]);
 
   // Post details modal
   const [detailsModalPost, setDetailsModalPost] = useState<ScheduledPost | null>(null);
   const [detailsModalOpen, setDetailsModalOpen] = useState(false);
 
   // Instagram media hook - fetches existing posts from Instagram
+  // Only pass account ID for grid view, and only if an account is selected
   const {
     instagramPosts,
     loading: instagramMediaLoading,
     error: instagramMediaError,
     refreshMedia,
     lastFetched,
-  } = useInstagramMedia(selectedAccount);
+  } = useInstagramMedia(viewMode === 'grid' && selectedAccount ? selectedAccount : undefined);
 
   // Check if compose param is in URL
   useEffect(() => {
@@ -97,52 +106,23 @@ const Scheduler: React.FC = () => {
     }
   }, [searchParams, setSearchParams]);
 
-  // Fetch posts with filters
+  // Fetch posts with filters - now includes published posts from Instagram
+  // For grid view, don't apply date range filter (show all posts)
+  // For calendar view, apply date range filter
   const {
-    posts: scheduledPosts,
+    posts,
     calendarEvents,
     loading,
     deletePost,
     refreshPosts,
   } = usePosts({
     status: selectedStatus === 'all' ? undefined : selectedStatus,
-    accountId: selectedAccount === 'all' ? undefined : selectedAccount,
-    startDate: dateRange.start,
-    endDate: dateRange.end,
+    accountId: selectedAccount && selectedAccount !== 'all' ? selectedAccount : undefined,
+    startDate: viewMode === 'calendar' ? dateRange.start : undefined,
+    endDate: viewMode === 'calendar' ? dateRange.end : undefined,
   });
 
-  // Combine scheduled posts with Instagram posts (published)
-  // Instagram posts are prefixed with 'ig_' to distinguish them
-  const posts = useMemo(() => {
-    // Create a set of Instagram post IDs that we already have as scheduled (published)
-    const publishedInstagramIds = new Set(
-      scheduledPosts
-        .filter(p => p.instagramPostId)
-        .map(p => p.instagramPostId)
-    );
-
-    // Filter out Instagram posts that already exist in our scheduled posts
-    const uniqueInstagramPosts = instagramPosts.filter(
-      p => !publishedInstagramIds.has(p.instagramPostId)
-    );
-
-    // Combine and sort by date (newest first)
-    const combined = [...scheduledPosts, ...uniqueInstagramPosts];
-
-    return combined.sort((a, b) => {
-      const timeA = a.scheduledTime instanceof Date
-        ? a.scheduledTime
-        : (a.scheduledTime as any)?.toDate?.() || new Date();
-      const timeB = b.scheduledTime instanceof Date
-        ? b.scheduledTime
-        : (b.scheduledTime as any)?.toDate?.() || new Date();
-
-      // Sort all posts by date descending (newest/latest first)
-      return timeB.getTime() - timeA.getTime();
-    });
-  }, [scheduledPosts, instagramPosts]);
-
-  // Combined loading state
+  // Combined loading state (includes Instagram sync loading)
   const isLoading = loading || instagramMediaLoading;
 
   // Calculate filtered posts count for grid view
@@ -174,9 +154,9 @@ const Scheduler: React.FC = () => {
 
   // Handle edit from details modal
   const handleEditPost = useCallback((post: ScheduledPost) => {
-    // Prevent editing Instagram posts fetched from API
-    if (post.id.startsWith('ig_')) {
-      toast.error('Cannot edit posts published on Instagram');
+    // Prevent editing published posts
+    if (post.status === 'published') {
+      toast.error('Cannot edit published posts');
       return;
     }
     setDetailsModalOpen(false);
@@ -205,13 +185,16 @@ const Scheduler: React.FC = () => {
 
   // Handle delete confirmation
   const handleDeleteClick = useCallback((postId: string) => {
-    // Prevent deleting Instagram posts fetched from API
-    if (postId.startsWith('ig_')) {
-      toast.error('Cannot delete posts published on Instagram');
+    // Find the post to check its status
+    const post = posts.find(p => p.id === postId);
+
+    // Prevent deleting published posts
+    if (post?.status === 'published') {
+      toast.error('Cannot delete published posts');
       return;
     }
     setDeleteDialog({ open: true, postId });
-  }, []);
+  }, [posts]);
 
   const handleDeleteCancel = () => {
     setDeleteDialog({ open: false, postId: null });
@@ -238,20 +221,23 @@ const Scheduler: React.FC = () => {
   // Handle post reorder in grid view
   const handlePostReorder = useCallback(
     async (postId: string, sourceIndex: number, destinationIndex: number) => {
-      // Only allow reordering of scheduled posts (not Instagram posts)
-      if (postId.startsWith('ig_')) {
-        toast.error('Cannot reorder published Instagram posts');
+      // Find the post to check its status
+      const post = posts.find(p => p.id === postId);
+
+      // Only allow reordering of scheduled posts (not published posts)
+      if (post?.status !== 'scheduled') {
+        toast.error('Only scheduled posts can be reordered');
         return;
       }
       try {
-        await reorderPost(scheduledPosts, postId, sourceIndex, destinationIndex);
+        await reorderPost(posts, postId, sourceIndex, destinationIndex);
         toast.success('Post reordered');
         refreshPosts();
       } catch (err) {
         toast.error('Failed to reorder post');
       }
     },
-    [scheduledPosts, reorderPost, refreshPosts]
+    [posts, reorderPost, refreshPosts]
   );
 
   // Refresh all data (scheduled posts and Instagram media)
@@ -375,8 +361,6 @@ const Scheduler: React.FC = () => {
           onGridViewChange={setGridView}
           showCarousels={showCarousels}
           onShowCarouselsChange={setShowCarousels}
-          dateRange={gridDateRange}
-          onDateRangeChange={setGridDateRange}
           totalPosts={posts.length}
           filteredCount={filteredGridPosts.length}
         />
@@ -534,7 +518,9 @@ const Scheduler: React.FC = () => {
                   ? editingPost.scheduledTime
                   : (editingPost.scheduledTime as any)?.toDate?.() || new Date(),
                 accountId: editingPost.accountId,
-                postType: editingPost.postType,
+                postType: ['feed', 'story', 'reel', 'carousel'].includes(editingPost.postType)
+                  ? (editingPost.postType as 'feed' | 'story' | 'reel' | 'carousel')
+                  : undefined,
               }
             : composerInitialDate
             ? { scheduledTime: composerInitialDate }

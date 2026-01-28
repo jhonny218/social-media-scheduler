@@ -42,6 +42,7 @@ import MediaUploader from './MediaUploader';
 import { useAuth } from '../../hooks/useAuth';
 import { useInstagram } from '../../hooks/useInstagram';
 import { MediaService } from '../../services/media.service';
+import { PLATFORMS } from '../../config/supabase';
 import { instagramService } from '../../services/instagram.service';
 import { PostType, PostMedia } from '../../types';
 
@@ -270,6 +271,7 @@ const PostComposer: React.FC<PostComposerProps> = ({
       } else {
         await postsService.createPost(
           {
+            platform: PLATFORMS.INSTAGRAM,
             accountId: data.accountId,
             postType: data.postType,
             caption: data.caption,
@@ -278,7 +280,7 @@ const PostComposer: React.FC<PostComposerProps> = ({
             publishMethod: 'auto',
             firstComment: data.firstComment,
           },
-          account.instagramUserId
+          account.igUserId
         );
         toast.success('Post scheduled successfully!');
       }

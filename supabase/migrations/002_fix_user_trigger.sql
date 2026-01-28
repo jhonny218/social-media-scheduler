@@ -1,12 +1,17 @@
 -- Fix the handle_new_user trigger to properly create sch_users records
 -- This addresses RLS policy issues when auth users are created
 
--- Drop the old overly permissive policy if it exists
+-- Drop any old policies
 DROP POLICY IF EXISTS "Service role can insert users" ON sch_users;
+DROP POLICY IF EXISTS "Enable insert for service role" ON sch_users;
+DROP POLICY IF EXISTS "Users can insert own data" ON sch_users;
 
--- Add proper service role policy
-CREATE POLICY "Enable insert for service role" ON sch_users
-  FOR INSERT TO service_role WITH CHECK (true);
+-- Recreate the insert policy to work with both regular users and triggers
+CREATE POLICY "Users can insert own data" ON sch_users
+  FOR INSERT WITH CHECK (
+    auth.uid() = id OR
+    current_setting('role') = 'service_role'
+  );
 
 -- Update the trigger function with better error handling
 CREATE OR REPLACE FUNCTION handle_new_user()

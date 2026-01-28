@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useInstagram } from './useInstagram';
 import { ScheduledPost, PostMedia } from '../types';
+import { supabase, TABLES } from '../config/supabase';
 
 // Instagram Graph API base URL
 const INSTAGRAM_GRAPH_API = 'https://graph.instagram.com';
@@ -73,6 +74,78 @@ export const useInstagramMedia = (accountId?: string): UseInstagramMediaReturn =
     return data.data || [];
   }, []);
 
+  // Save Instagram posts to database (only new ones)
+  const syncInstagramPostsToDatabase = useCallback(async (
+    posts: ScheduledPost[]
+  ): Promise<void> => {
+    if (posts.length === 0) return;
+
+    try {
+      // Get existing published posts for this account from database
+      const { data: existingPosts, error: fetchError } = await supabase
+        .from(TABLES.SCHEDULED_POSTS)
+        .select('platform_post_id')
+        .eq('user_id', posts[0].userId)
+        .eq('account_id', posts[0].accountId)
+        .eq('status', 'published')
+        .not('platform_post_id', 'is', null);
+
+      if (fetchError) {
+        console.error('Error fetching existing posts:', fetchError);
+        return;
+      }
+
+      // Create a set of existing Instagram post IDs
+      const existingPostIds = new Set(
+        (existingPosts || []).map(p => p.platform_post_id)
+      );
+
+      // Filter out posts that already exist in the database
+      const newPosts = posts.filter(
+        post => post.platformPostId && !existingPostIds.has(post.platformPostId)
+      );
+
+      if (newPosts.length === 0) {
+        console.log('No new Instagram posts to sync');
+        return;
+      }
+
+      // Prepare data for insertion
+      const postsToInsert = newPosts.map(post => ({
+        user_id: post.userId,
+        platform: post.platform,
+        account_id: post.accountId,
+        platform_user_id: post.platformUserId,
+        post_type: post.postType,
+        caption: post.caption || null,
+        media: post.media,
+        scheduled_time: post.scheduledTime,
+        status: 'published',
+        publish_method: post.publishMethod,
+        platform_post_id: post.platformPostId,
+        permalink: post.permalink || null,
+        published_at: post.publishedAt,
+        first_comment: null,
+        error_message: null,
+        created_at: post.publishedAt, // Use publish date as created date
+        updated_at: new Date().toISOString(),
+      }));
+
+      // Insert new posts into database
+      const { error: insertError } = await supabase
+        .from(TABLES.SCHEDULED_POSTS)
+        .insert(postsToInsert);
+
+      if (insertError) {
+        console.error('Error syncing Instagram posts to database:', insertError);
+      } else {
+        console.log(`Synced ${newPosts.length} new Instagram posts to database`);
+      }
+    } catch (error) {
+      console.error('Error in syncInstagramPostsToDatabase:', error);
+    }
+  }, []);
+
   // Convert Instagram media to ScheduledPost format
   const convertToScheduledPost = useCallback((
     media: InstagramMediaItem,
@@ -104,7 +177,7 @@ export const useInstagramMedia = (accountId?: string): UseInstagramMediaReturn =
     const publishedDate = new Date(media.timestamp);
 
     return {
-      id: `ig_${media.id}`, // Prefix to distinguish from scheduled posts
+      id: `ig_${media.id}`, // Prefix to distinguish from scheduled posts (temporary, will use DB id)
       userId,
       platform: 'instagram',
       accountId,
@@ -143,7 +216,11 @@ export const useInstagramMedia = (accountId?: string): UseInstagramMediaReturn =
         convertToScheduledPost(item, account.id, account.igUserId, account.userId)
       );
 
-      setInstagramPosts(posts);
+      // Sync new posts to database
+      await syncInstagramPostsToDatabase(posts);
+
+      // Note: We're not setting instagramPosts anymore since we'll fetch from DB
+      setInstagramPosts([]);
       setLastFetched(new Date());
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Failed to fetch Instagram media';
@@ -152,7 +229,7 @@ export const useInstagramMedia = (accountId?: string): UseInstagramMediaReturn =
     } finally {
       setLoading(false);
     }
-  }, [account, fetchInstagramMedia, convertToScheduledPost]);
+  }, [account, fetchInstagramMedia, convertToScheduledPost, syncInstagramPostsToDatabase]);
 
   // Fetch media when account changes
   useEffect(() => {

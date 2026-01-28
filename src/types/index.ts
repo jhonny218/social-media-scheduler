@@ -12,6 +12,7 @@ export interface UserPreferences {
 
 export interface User {
   id: string;
+  uid?: string;
   email: string;
   displayName: string;
   photoURL?: string;
@@ -34,6 +35,7 @@ export interface InstagramAccount {
   id: string;
   userId: string;
   igUserId: string; // was: instagramUserId
+  instagramUserId?: string;
   username: string;
   accountType: InstagramAccountType;
   accessToken: string;
@@ -71,6 +73,7 @@ export interface ScheduledPost {
   status: PostStatus;
   publishMethod: PublishMethod;
   platformPostId?: string; // was: instagramPostId
+  instagramPostId?: string;
   permalink?: string;
   publishedAt?: string;
   firstComment?: string;

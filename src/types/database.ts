@@ -9,7 +9,7 @@ export type Json =
 export interface Database {
   public: {
     Tables: {
-      users: {
+      sch_users: {
         Row: {
           id: string
           email: string
@@ -91,7 +91,7 @@ export interface Database {
           updated_at?: string
         }
       }
-      scheduled_posts: {
+      sch_scheduled_posts: {
         Row: {
           id: string
           user_id: string
@@ -153,7 +153,7 @@ export interface Database {
           updated_at?: string
         }
       }
-      media_library: {
+      sch_media_library: {
         Row: {
           id: string
           user_id: string
