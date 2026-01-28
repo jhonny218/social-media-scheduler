@@ -25,7 +25,7 @@ export interface DailyStats {
   engagement: number;
 }
 
-// Convert database row to ScheduledPost type
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 const dbRowToPost = (row: any): ScheduledPost => ({
   id: row.id,
   userId: row.user_id,
@@ -47,7 +47,7 @@ const dbRowToPost = (row: any): ScheduledPost => ({
   updatedAt: row.updated_at,
 });
 
-// Convert database row to InstagramAccount type
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 const dbRowToAccount = (row: any): InstagramAccount => ({
   id: row.id,
   userId: row.user_id,

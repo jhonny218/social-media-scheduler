@@ -132,8 +132,9 @@ const Analytics: React.FC = () => {
   const publishedCount = posts.filter((p) => p.status === 'published').length;
   const failedCount = posts.filter((p) => p.status === 'failed').length;
 
-  // Get top posts by (simulated) engagement
-  const topPosts = posts
+  // Get top posts by (simulated) engagement - available for future use
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  const _topPosts = posts
     .filter((p) => p.status === 'published')
     .slice(0, 5);
 
@@ -322,8 +323,10 @@ const Analytics: React.FC = () => {
                   <TableBody>
                     {posts.slice(0, 10).map((post) => {
                       const account = getAccount(post.accountId);
-                      const timestamp = post.scheduledTime as any;
-                      const postDate = timestamp?.toDate ? timestamp.toDate() : new Date();
+                      const timestamp = post.scheduledTime;
+                      const postDate = typeof timestamp === 'object' && timestamp !== null && 'toDate' in timestamp
+                        ? (timestamp as { toDate: () => Date }).toDate()
+                        : new Date(timestamp as string);
 
                       return (
                         <TableRow key={post.id} hover>

@@ -1,5 +1,5 @@
-import React, { createContext, useContext, useEffect, useState, useCallback } from 'react';
-import { User as SupabaseUser, Session } from '@supabase/supabase-js';
+import React, { createContext, useContext, useEffect, useState, useCallback, useRef } from 'react';
+import { User as SupabaseUser, AuthChangeEvent } from '@supabase/supabase-js';
 import { supabase, TABLES } from '../config/supabase';
 import { User, UserInput, AuthState, UserPreferences } from '../types';
 
@@ -23,16 +23,33 @@ const DEFAULT_PREFERENCES: UserPreferences = {
   },
 };
 
+// Timeout for auth operations (10 seconds)
+const AUTH_TIMEOUT = 10000;
+
 interface AuthProviderProps {
   children: React.ReactNode;
 }
 
+// Database row type
+interface UserRow {
+  id: string;
+  email: string;
+  display_name: string | null;
+  photo_url: string | null;
+  plan_tier: string;
+  timezone: string;
+  notifications_email: boolean;
+  notifications_push: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
 // Convert database row to User type
-const dbRowToUser = (row: any): User => ({
+const dbRowToUser = (row: UserRow): User => ({
   id: row.id,
   uid: row.id,
   email: row.email,
-  displayName: row.display_name,
+  displayName: row.display_name || '',
   photoURL: row.photo_url || undefined,
   planTier: row.plan_tier as 'free',
   createdAt: row.created_at,
@@ -46,6 +63,21 @@ const dbRowToUser = (row: any): User => ({
   },
 });
 
+// Helper to add timeout to promises
+const withTimeout = <T,>(
+  promiseOrThenable: Promise<T> | PromiseLike<T>,
+  ms: number,
+  errorMessage: string
+): Promise<T> => {
+  const promise = Promise.resolve(promiseOrThenable);
+  return Promise.race([
+    promise,
+    new Promise<T>((_, reject) =>
+      setTimeout(() => reject(new Error(errorMessage)), ms)
+    ),
+  ]);
+};
+
 export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   const [state, setState] = useState<AuthState>({
     user: null,
@@ -53,24 +85,43 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     error: null,
   });
 
-  // Fetch user document from database
-  const fetchUserDoc = useCallback(async (userId: string): Promise<User | null> => {
-    try {
-      const { data, error } = await supabase
-        .from(TABLES.USERS)
-        .select('*')
-        .eq('id', userId)
-        .single();
+  // Track if we've completed initial auth check
+  const initializedRef = useRef(false);
+  const processingRef = useRef(false);
 
-      if (error || !data) {
-        return null;
+  // Fetch user document from database with retry
+  const fetchUserDoc = useCallback(async (userId: string, retries = 2): Promise<User | null> => {
+    for (let attempt = 0; attempt <= retries; attempt++) {
+      try {
+        const { data, error } = await withTimeout(
+          supabase
+            .from(TABLES.USERS)
+            .select('*')
+            .eq('id', userId)
+            .single(),
+          5000,
+          'Database request timed out'
+        );
+
+        if (error) {
+          // PGRST116 = no rows found - not a retry-able error
+          if (error.code === 'PGRST116') {
+            return null;
+          }
+          throw error;
+        }
+
+        return data ? dbRowToUser(data) : null;
+      } catch (error) {
+        console.error(`Fetch user attempt ${attempt + 1} failed:`, error);
+        if (attempt === retries) {
+          return null;
+        }
+        // Wait before retry
+        await new Promise(r => setTimeout(r, 500 * (attempt + 1)));
       }
-
-      return dbRowToUser(data);
-    } catch (error) {
-      console.error('Error fetching user document:', error);
-      return null;
     }
+    return null;
   }, []);
 
   // Create user document in database
@@ -90,11 +141,15 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
         updated_at: now,
       };
 
-      const { data, error } = await supabase
-        .from(TABLES.USERS)
-        .insert(userData)
-        .select()
-        .single();
+      const { data, error } = await withTimeout(
+        supabase
+          .from(TABLES.USERS)
+          .insert(userData)
+          .select()
+          .single(),
+        5000,
+        'Failed to create user profile'
+      );
 
       if (error) {
         throw new Error(`Failed to create user: ${error.message}`);
@@ -105,125 +160,113 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     []
   );
 
-  // Listen to auth state changes
-  useEffect(() => {
-    let isMounted = true;
+  // Handle session changes - single source of truth
+  const handleAuthChange = useCallback(async (
+    _event: AuthChangeEvent,
+    userId: string | null
+  ) => {
+    // Prevent concurrent processing
+    if (processingRef.current) {
+      return;
+    }
+    processingRef.current = true;
 
-    // Get initial session
-    const initializeSession = async () => {
-      try {
-        const { data: { session } } = await supabase.auth.getSession();
-        if (!isMounted) return;
+    try {
+      if (userId) {
+        const userDoc = await fetchUserDoc(userId);
 
-        if (session?.user) {
-          const userDoc = await fetchUserDoc(session.user.id);
-          if (!isMounted) return;
-
-          // If user doc doesn't exist, sign out the user
-          if (!userDoc) {
-            console.error('User document not found in database. Signing out...');
-            await supabase.auth.signOut();
-            setState({
-              user: null,
-              loading: false,
-              error: 'User profile not found. Please sign up again.',
-            });
-            return;
-          }
-
-          setState({
-            user: userDoc,
-            loading: false,
-            error: null,
-          });
-        } else {
+        if (!userDoc) {
+          // User authenticated but no profile - sign them out
+          console.warn('User profile not found, signing out');
+          await supabase.auth.signOut();
           setState({
             user: null,
             loading: false,
-            error: null,
+            error: 'User profile not found. Please sign up again.',
           });
+          return;
         }
-      } catch (error) {
-        if (!isMounted) return;
-        const message = error instanceof Error ? error.message : 'Failed to initialize session';
+
+        setState({
+          user: userDoc,
+          loading: false,
+          error: null,
+        });
+      } else {
         setState({
           user: null,
           loading: false,
-          error: message,
+          error: null,
         });
       }
-    };
+    } catch (error) {
+      console.error('Auth change error:', error);
+      setState({
+        user: null,
+        loading: false,
+        error: error instanceof Error ? error.message : 'Authentication failed',
+      });
+    } finally {
+      processingRef.current = false;
+      initializedRef.current = true;
+    }
+  }, [fetchUserDoc]);
 
-    initializeSession();
+  // Single auth listener - handles both initial load and changes
+  useEffect(() => {
+    let mounted = true;
 
-    // Listen for auth changes
+    // Safety timeout - if nothing happens in 10 seconds, stop loading
+    const safetyTimeout = setTimeout(() => {
+      if (mounted && !initializedRef.current) {
+        console.warn('Auth initialization timed out');
+        setState({
+          user: null,
+          loading: false,
+          error: 'Authentication timed out. Please refresh the page.',
+        });
+      }
+    }, AUTH_TIMEOUT);
+
+    // Subscribe to auth changes - this fires INITIAL_SESSION on mount
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       async (event, session) => {
-        try {
-          if (session?.user) {
-            const userDoc = await fetchUserDoc(session.user.id);
-            if (!isMounted) return;
+        if (!mounted) return;
 
-            // If user doc doesn't exist, sign out the user
-            if (!userDoc) {
-              console.error('User document not found in database. Signing out...');
-              await supabase.auth.signOut();
-              setState({
-                user: null,
-                loading: false,
-                error: 'User profile not found. Please sign up again.',
-              });
-              return;
-            }
-
-            setState({
-              user: userDoc,
-              loading: false,
-              error: null,
-            });
-          } else {
-            if (!isMounted) return;
-            setState({
-              user: null,
-              loading: false,
-              error: null,
-            });
-          }
-        } catch (error) {
-          if (!isMounted) return;
-          const message = error instanceof Error ? error.message : 'Failed to process auth update';
-          setState({
-            user: null,
-            loading: false,
-            error: message,
-          });
+        // Skip if already processing or if this is a duplicate INITIAL_SESSION
+        if (event === 'INITIAL_SESSION' && initializedRef.current) {
+          return;
         }
+
+        await handleAuthChange(event, session?.user?.id || null);
       }
     );
 
     return () => {
-      isMounted = false;
+      mounted = false;
+      clearTimeout(safetyTimeout);
       subscription.unsubscribe();
     };
-  }, [fetchUserDoc]);
+  }, [handleAuthChange]);
 
   // Sign in with email and password
   const signIn = async (email: string, password: string): Promise<void> => {
     setState((prev) => ({ ...prev, loading: true, error: null }));
 
     try {
-      const { data, error } = await supabase.auth.signInWithPassword({
-        email,
-        password,
-      });
+      const { data, error } = await withTimeout(
+        supabase.auth.signInWithPassword({ email, password }),
+        AUTH_TIMEOUT,
+        'Sign in timed out'
+      );
 
       if (error) {
         throw error;
       }
 
+      // Fetch user doc immediately to update state
       const userDoc = await fetchUserDoc(data.user.id);
 
-      // If user doc doesn't exist, sign out and throw error
       if (!userDoc) {
         await supabase.auth.signOut();
         throw new Error('User profile not found. Please contact support.');
@@ -250,15 +293,17 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     setState((prev) => ({ ...prev, loading: true, error: null }));
 
     try {
-      const { data, error } = await supabase.auth.signUp({
-        email,
-        password,
-        options: {
-          data: {
-            display_name: displayName,
+      const { data, error } = await withTimeout(
+        supabase.auth.signUp({
+          email,
+          password,
+          options: {
+            data: { display_name: displayName },
           },
-        },
-      });
+        }),
+        AUTH_TIMEOUT,
+        'Sign up timed out'
+      );
 
       if (error) {
         throw error;
@@ -268,8 +313,16 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
         throw new Error('Sign up failed');
       }
 
-      // Create user document in database
-      const userDoc = await createUserDoc(data.user, displayName);
+      // Wait a moment for the database trigger to create the user doc
+      await new Promise(r => setTimeout(r, 500));
+
+      // Try to fetch the user doc (created by trigger)
+      let userDoc = await fetchUserDoc(data.user.id);
+
+      // If trigger didn't create it, create it manually
+      if (!userDoc) {
+        userDoc = await createUserDoc(data.user, displayName);
+      }
 
       setState({
         user: userDoc,
@@ -288,7 +341,12 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     setState((prev) => ({ ...prev, loading: true, error: null }));
 
     try {
-      const { error } = await supabase.auth.signOut();
+      const { error } = await withTimeout(
+        supabase.auth.signOut(),
+        5000,
+        'Sign out timed out'
+      );
+
       if (error) {
         throw error;
       }
@@ -312,7 +370,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     }
 
     try {
-      const updateData: Record<string, any> = {
+      const updateData: Partial<UserRow> & { updated_at: string } = {
         updated_at: new Date().toISOString(),
       };
 
@@ -350,7 +408,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     }
 
     try {
-      const updateData: Record<string, any> = {
+      const updateData: Partial<UserRow> & { updated_at: string } = {
         updated_at: new Date().toISOString(),
       };
 
@@ -406,6 +464,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
 };
 
 // Custom hook to use auth context
+// eslint-disable-next-line react-refresh/only-export-components
 export const useAuth = (): AuthContextType => {
   const context = useContext(AuthContext);
   if (context === undefined) {

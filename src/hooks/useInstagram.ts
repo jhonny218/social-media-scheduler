@@ -28,8 +28,24 @@ interface UseInstagramReturn {
   fetchInstagramProfile: (igUserId: string, accessToken: string) => Promise<InstagramProfile>;
 }
 
+// Database row type for Instagram accounts
+interface IgAccountRow {
+  id: string;
+  user_id: string;
+  ig_user_id: string;
+  username: string;
+  account_type: string;
+  access_token: string;
+  token_expires_at: string;
+  profile_picture_url: string | null;
+  followers_count: number | null;
+  is_connected: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
 // Convert database row to InstagramAccount type
-const dbRowToAccount = (row: any): InstagramAccount => ({
+const dbRowToAccount = (row: IgAccountRow): InstagramAccount => ({
   id: row.id,
   userId: row.user_id,
   igUserId: row.ig_user_id,

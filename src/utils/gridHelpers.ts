@@ -4,14 +4,14 @@ import { ScheduledPost } from '../types';
  * Get the timestamp value as a Date object
  */
 export const getScheduledDate = (post: ScheduledPost): Date => {
-  const timestamp = post.scheduledTime as any;
-  if (timestamp?.toDate) {
-    return timestamp.toDate();
+  const timestamp = post.scheduledTime;
+  if (typeof timestamp === 'object' && timestamp !== null && 'toDate' in timestamp) {
+    return (timestamp as { toDate: () => Date }).toDate();
   }
   if (timestamp instanceof Date) {
     return timestamp;
   }
-  return new Date(timestamp);
+  return new Date(timestamp as string);
 };
 
 /**

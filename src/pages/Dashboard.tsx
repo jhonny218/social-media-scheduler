@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import {
   Box,
   Grid,
@@ -15,13 +15,12 @@ import {
   Schedule as ScheduleIcon,
   CheckCircle as PublishedIcon,
   Error as FailedIcon,
-  TrendingUp as TrendingIcon,
   Instagram as InstagramIcon,
   Add as AddIcon,
   CalendarMonth as CalendarIcon,
 } from '@mui/icons-material';
 import { useNavigate } from 'react-router-dom';
-import { format, startOfWeek, endOfWeek, startOfMonth, endOfMonth } from 'date-fns';
+import { startOfWeek, endOfWeek } from 'date-fns';
 import { useAuth } from '../hooks/useAuth';
 import { useInstagram } from '../hooks/useInstagram';
 import { usePosts } from '../hooks/usePosts';

@@ -22,11 +22,33 @@ interface UsePostsReturn {
   refreshPosts: () => void;
 }
 
+// Database row type for scheduled posts
+interface PostRow {
+  id: string;
+  user_id: string;
+  platform: string;
+  account_id: string;
+  platform_user_id: string;
+  post_type: string;
+  caption: string | null;
+  media: PostMedia[] | null;
+  scheduled_time: string;
+  status: string;
+  publish_method: string;
+  platform_post_id: string | null;
+  permalink: string | null;
+  published_at: string | null;
+  first_comment: string | null;
+  error_message: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
 // Convert database row to ScheduledPost type
-const dbRowToPost = (row: any): ScheduledPost => ({
+const dbRowToPost = (row: PostRow): ScheduledPost => ({
   id: row.id,
   userId: row.user_id,
-  platform: row.platform,
+  platform: row.platform as ScheduledPost['platform'],
   accountId: row.account_id,
   platformUserId: row.platform_user_id,
   postType: row.post_type as ScheduledPost['postType'],
@@ -140,7 +162,7 @@ export const usePosts = (options: UsePostsOptions = {}): UsePostsReturn => {
           table: TABLES.SCHEDULED_POSTS,
           filter: `user_id=eq.${user.id}`,
         },
-        (payload) => {
+        () => {
           // Refresh on any change
           fetchPosts();
         }
@@ -229,7 +251,7 @@ export const usePosts = (options: UsePostsOptions = {}): UsePostsReturn => {
     setError(null);
 
     try {
-      const updateData: Record<string, any> = {
+      const updateData: Partial<PostRow> & { updated_at: string } = {
         updated_at: new Date().toISOString(),
       };
 

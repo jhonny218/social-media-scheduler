@@ -1,7 +1,7 @@
-import { supabase, TABLES, PLATFORMS } from '../config/supabase';
-import { ScheduledPost, PostInput, PostStatus, PostMedia, Platform } from '../types';
+import { supabase, TABLES } from '../config/supabase';
+import { ScheduledPost, PostInput, PostStatus, PostMedia } from '../types';
 
-// Convert database row to ScheduledPost type
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 const dbRowToPost = (row: any): ScheduledPost => ({
   id: row.id,
   userId: row.user_id,
@@ -175,6 +175,7 @@ export class PostsService {
 
   // Update a post
   async updatePost(postId: string, updates: Partial<ScheduledPost>): Promise<void> {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const updateData: Record<string, any> = {
       updated_at: new Date().toISOString(),
     };
@@ -211,6 +212,7 @@ export class PostsService {
       errorMessage?: string;
     }
   ): Promise<void> {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const updateData: Record<string, any> = {
       status,
       updated_at: new Date().toISOString(),

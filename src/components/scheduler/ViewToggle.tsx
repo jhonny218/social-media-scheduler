@@ -3,7 +3,6 @@ import {
   ToggleButtonGroup,
   ToggleButton,
   Tooltip,
-  Box,
 } from '@mui/material';
 import {
   CalendarMonth as CalendarIcon,

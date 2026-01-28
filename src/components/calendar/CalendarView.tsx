@@ -49,6 +49,7 @@ interface CalendarViewProps {
 
 const CalendarView: React.FC<CalendarViewProps> = ({
   events,
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   loading: _loading = false,
   onDateRangeChange,
   onEventClick,

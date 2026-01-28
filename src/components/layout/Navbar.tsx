@@ -60,7 +60,7 @@ const Navbar: React.FC<NavbarProps> = ({ onMenuClick }) => {
       await signOut();
       toast.success('Signed out successfully');
       navigate('/login');
-    } catch (error) {
+    } catch {
       toast.error('Failed to sign out');
     }
   };

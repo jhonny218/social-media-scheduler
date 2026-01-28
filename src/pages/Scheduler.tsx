@@ -38,7 +38,7 @@ import CalendarView from '../components/calendar/CalendarView';
 import PostCard from '../components/posts/PostCard';
 import PostComposer from '../components/posts/PostComposer';
 import PostDetailsModal from '../components/posts/PostDetailsModal';
-import ViewToggle, { ViewType } from '../components/scheduler/ViewToggle';
+import ViewToggle from '../components/scheduler/ViewToggle';
 import InstagramGridView from '../components/grid/InstagramGridView';
 import GridFilters from '../components/grid/GridFilters';
 import { ScheduledPost, PostStatus } from '../types';
@@ -90,7 +90,8 @@ const Scheduler: React.FC = () => {
   // Instagram media hook - fetches existing posts from Instagram
   // Only pass account ID for grid view, and only if an account is selected
   const {
-    instagramPosts,
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    instagramPosts: _instagramPosts,
     loading: instagramMediaLoading,
     error: instagramMediaError,
     refreshMedia,
@@ -171,7 +172,9 @@ const Scheduler: React.FC = () => {
     const tomorrow = addDays(new Date(), 1);
     const scheduledTime = post.scheduledTime instanceof Date
       ? post.scheduledTime
-      : (post.scheduledTime as any)?.toDate?.() || new Date();
+      : typeof post.scheduledTime === 'object' && post.scheduledTime && 'toDate' in post.scheduledTime
+        ? (post.scheduledTime as { toDate: () => Date }).toDate()
+        : new Date();
     tomorrow.setHours(scheduledTime.getHours(), scheduledTime.getMinutes());
 
     setEditingPost({
@@ -211,7 +214,7 @@ const Scheduler: React.FC = () => {
         setDetailsModalOpen(false);
         setDetailsModalPost(null);
       }
-    } catch (err) {
+    } catch {
       toast.error('Failed to delete post');
     } finally {
       handleDeleteCancel();
@@ -233,7 +236,7 @@ const Scheduler: React.FC = () => {
         await reorderPost(posts, postId, sourceIndex, destinationIndex);
         toast.success('Post reordered');
         refreshPosts();
-      } catch (err) {
+      } catch {
         toast.error('Failed to reorder post');
       }
     },
@@ -516,7 +519,9 @@ const Scheduler: React.FC = () => {
                 firstComment: editingPost.firstComment,
                 scheduledTime: editingPost.scheduledTime instanceof Date
                   ? editingPost.scheduledTime
-                  : (editingPost.scheduledTime as any)?.toDate?.() || new Date(),
+                  : typeof editingPost.scheduledTime === 'object' && editingPost.scheduledTime && 'toDate' in editingPost.scheduledTime
+                    ? (editingPost.scheduledTime as { toDate: () => Date }).toDate()
+                    : new Date(),
                 accountId: editingPost.accountId,
                 postType: ['feed', 'story', 'reel', 'carousel'].includes(editingPost.postType)
                   ? (editingPost.postType as 'feed' | 'story' | 'reel' | 'carousel')

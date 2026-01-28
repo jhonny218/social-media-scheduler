@@ -12,6 +12,7 @@ import {
   Delete as DeleteIcon,
   DragIndicator as DragIcon,
 } from '@mui/icons-material';
+import { DraggableProvidedDragHandleProps } from '@hello-pangea/dnd';
 import { ScheduledPost } from '../../types';
 
 interface GridPostProps {
@@ -20,7 +21,7 @@ interface GridPostProps {
   onEdit?: () => void;
   onDelete?: () => void;
   isDragging: boolean;
-  dragHandleProps?: Record<string, any> | null;
+  dragHandleProps?: DraggableProvidedDragHandleProps | null;
   paddingTop?: string;
 }
 

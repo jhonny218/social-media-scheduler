@@ -19,7 +19,6 @@ import {
   Card,
   CardMedia,
   CardContent,
-  CardActions,
   Menu,
   MenuItem,
   ListItemIcon,
@@ -43,7 +42,7 @@ import { format } from 'date-fns';
 import toast from 'react-hot-toast';
 import { useAuth } from '../hooks/useAuth';
 import { MediaService } from '../services/media.service';
-import { MediaItem, MediaType } from '../types';
+import { MediaItem } from '../types';
 
 type ViewMode = 'grid' | 'list';
 type FilterType = 'all' | 'image' | 'video';
@@ -53,7 +52,8 @@ const MediaLibrary: React.FC = () => {
   const [media, setMedia] = useState<MediaItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState(false);
-  const [uploadProgress, setUploadProgress] = useState<Map<string, number>>(new Map());
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  const [_uploadProgress, setUploadProgress] = useState<Map<string, number>>(new Map());
   const [viewMode, setViewMode] = useState<ViewMode>('grid');
   const [filterType, setFilterType] = useState<FilterType>('all');
   const [searchQuery, setSearchQuery] = useState('');
@@ -159,7 +159,7 @@ const MediaLibrary: React.FC = () => {
       await mediaService.deleteMedia(deleteDialog.item.id);
       setMedia((prev) => prev.filter((m) => m.id !== deleteDialog.item!.id));
       toast.success('File deleted');
-    } catch (error) {
+    } catch {
       toast.error('Failed to delete file');
     } finally {
       setDeleteDialog({ open: false, item: null });

@@ -10,7 +10,7 @@ export interface UploadProgress {
 
 export type UploadProgressCallback = (progress: UploadProgress) => void;
 
-// Convert database row to MediaItem type
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 const dbRowToMediaItem = (row: any): MediaItem => ({
   id: row.id,
   userId: row.user_id,
@@ -71,7 +71,7 @@ export class MediaService {
     }
 
     // Upload to Supabase Storage
-    const { data: uploadData, error: uploadError } = await supabase.storage
+    const { error: uploadError } = await supabase.storage
       .from(STORAGE_BUCKETS.MEDIA)
       .upload(storagePath, file, {
         cacheControl: '3600',

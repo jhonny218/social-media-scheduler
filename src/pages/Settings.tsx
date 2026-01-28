@@ -14,14 +14,12 @@ import {
   InputLabel,
   Avatar,
   CircularProgress,
-  Alert,
   Tabs,
   Tab,
 } from '@mui/material';
 import {
   Person as ProfileIcon,
   Instagram as InstagramIcon,
-  Notifications as NotificationsIcon,
   Settings as PreferencesIcon,
 } from '@mui/icons-material';
 import { useForm, Controller } from 'react-hook-form';
@@ -59,7 +57,8 @@ interface PreferencesFormData {
 }
 
 const Settings: React.FC = () => {
-  const { user, updateUserProfile, updateUserPreferences, loading } = useAuth();
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  const { user, updateUserProfile, updateUserPreferences, loading: _loading } = useAuth();
   const [activeTab, setActiveTab] = useState(0);
   const [saving, setSaving] = useState(false);
 
@@ -93,7 +92,7 @@ const Settings: React.FC = () => {
     try {
       await updateUserProfile({ displayName: data.displayName });
       toast.success('Profile updated');
-    } catch (err) {
+    } catch {
       toast.error('Failed to update profile');
     } finally {
       setSaving(false);
@@ -112,7 +111,7 @@ const Settings: React.FC = () => {
         },
       });
       toast.success('Preferences updated');
-    } catch (err) {
+    } catch {
       toast.error('Failed to update preferences');
     } finally {
       setSaving(false);
