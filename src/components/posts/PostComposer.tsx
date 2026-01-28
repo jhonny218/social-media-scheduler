@@ -37,22 +37,13 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { addMinutes, isBefore } from 'date-fns';
 import toast from 'react-hot-toast';
-import MediaUploader from './MediaUploader';
+import MediaUploader, { UploadedFile } from './MediaUploader';
 import { useAuth } from '../../hooks/useAuth';
 import { useInstagram } from '../../hooks/useInstagram';
 import { MediaService } from '../../services/media.service';
 import { PLATFORMS } from '../../config/supabase';
 import { instagramService } from '../../services/instagram.service';
 import { PostMedia } from '../../types';
-
-interface UploadedFile {
-  id: string;
-  file: File;
-  preview: string;
-  type: 'image' | 'video';
-  progress: number;
-  uploaded: boolean;
-}
 
 const postSchema = z.object({
   accountId: z.string().min(1, 'Please select an Instagram account'),
