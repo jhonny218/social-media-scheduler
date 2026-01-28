@@ -1,4 +1,5 @@
 import { supabase } from '../config/supabase';
+import { aiService } from './ai.service';
 import {
   CaptionGenerationRequest,
   CaptionGenerationResponse,
@@ -9,30 +10,14 @@ import {
 // Instagram service for frontend
 // Note: Most Instagram API calls should go through Edge Functions for security
 export class InstagramService {
-  // Generate AI-powered caption using Edge Function
+  // Generate AI-powered caption using Gemini
   async generateCaption(request: CaptionGenerationRequest): Promise<CaptionGenerationResponse> {
-    const { data, error } = await supabase.functions.invoke('generate-caption', {
-      body: request,
-    });
-
-    if (error) {
-      throw new Error(error.message || 'Failed to generate caption');
-    }
-
-    return data;
+    return aiService.generateCaption(request);
   }
 
-  // Get hashtag suggestions using Edge Function
+  // Get hashtag suggestions using Gemini
   async suggestHashtags(request: HashtagSuggestionRequest): Promise<HashtagSuggestionResponse> {
-    const { data, error } = await supabase.functions.invoke('suggest-hashtags', {
-      body: request,
-    });
-
-    if (error) {
-      throw new Error(error.message || 'Failed to suggest hashtags');
-    }
-
-    return data;
+    return aiService.suggestHashtags(request);
   }
 
   // Publish a post immediately (triggers Edge Function)
