@@ -111,9 +111,10 @@ const PostCard: React.FC<PostCardProps> = ({
     }
   };
 
-  const formatScheduledTime = (timestamp: any): string => {
+  const formatScheduledTime = (timestamp: unknown): string => {
     try {
-      const date = timestamp.toDate ? timestamp.toDate() : new Date(timestamp);
+      const maybe = timestamp as { toDate?: () => Date };
+      const date = maybe?.toDate ? maybe.toDate() : new Date(String(timestamp));
       return format(date, 'MMM d, yyyy h:mm a');
     } catch {
       return 'Invalid date';

@@ -20,7 +20,7 @@ interface GridPostProps {
   onEdit?: () => void;
   onDelete?: () => void;
   isDragging: boolean;
-  dragHandleProps?: any;
+  dragHandleProps?: Record<string, any> | null;
   paddingTop?: string;
 }
 

@@ -49,7 +49,7 @@ interface CalendarViewProps {
 
 const CalendarView: React.FC<CalendarViewProps> = ({
   events,
-  loading = false,
+  loading: _loading = false,
   onDateRangeChange,
   onEventClick,
   onSlotClick,
@@ -103,7 +103,7 @@ const CalendarView: React.FC<CalendarViewProps> = ({
   };
 
   // Get status color
-  const getStatusColor = (status: PostStatus): string => {
+  const getStatusColor = useCallback((status: PostStatus): string => {
     switch (status) {
       case 'published':
         return theme.palette.success.main;
@@ -117,7 +117,7 @@ const CalendarView: React.FC<CalendarViewProps> = ({
       default:
         return theme.palette.grey[500];
     }
-  };
+  }, [theme]);
 
   // Custom event style
   const eventStyleGetter = useCallback(
@@ -138,7 +138,7 @@ const CalendarView: React.FC<CalendarViewProps> = ({
         },
       };
     },
-    [theme]
+    [getStatusColor]
   );
 
   // Custom event component

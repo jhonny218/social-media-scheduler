@@ -46,7 +46,7 @@ const InstagramGridView: React.FC<InstagramGridViewProps> = ({
   onPostDelete,
   onCreatePost,
 }) => {
-  const [isDragging, setIsDragging] = useState(false);
+  // Note: Draggable snapshot provides dragging state; local state removed.
   const tilePaddingTop = gridView === 'reels' ? '177.78%' : '125%';
 
   // Filter and sort posts
@@ -62,8 +62,6 @@ const InstagramGridView: React.FC<InstagramGridViewProps> = ({
 
   // Handle drag end
   const handleDragEnd = (result: DropResult) => {
-    setIsDragging(false);
-
     if (!result.destination) return;
 
     const sourceIndex = result.source.index;
@@ -75,7 +73,7 @@ const InstagramGridView: React.FC<InstagramGridViewProps> = ({
   };
 
   const handleDragStart = () => {
-    setIsDragging(true);
+    // noop - using Draggable snapshot for dragging visuals
   };
 
   // Loading skeleton
@@ -144,7 +142,7 @@ const InstagramGridView: React.FC<InstagramGridViewProps> = ({
     <Box sx={{ backgroundColor: 'white' }}>
       <DragDropContext onDragEnd={handleDragEnd} onDragStart={handleDragStart}>
         <Droppable droppableId="instagram-grid" direction="horizontal">
-          {(provided, snapshot) => (
+          {(provided) => (
             <Box
               ref={provided.innerRef}
               {...provided.droppableProps}

@@ -16,7 +16,6 @@ import {
   Divider,
   Alert,
   CircularProgress,
-  Chip,
   Tooltip,
   ToggleButtonGroup,
   ToggleButton,
@@ -44,7 +43,7 @@ import { useInstagram } from '../../hooks/useInstagram';
 import { MediaService } from '../../services/media.service';
 import { PLATFORMS } from '../../config/supabase';
 import { instagramService } from '../../services/instagram.service';
-import { PostType, PostMedia } from '../../types';
+import { PostMedia } from '../../types';
 
 interface UploadedFile {
   id: string;
@@ -164,7 +163,7 @@ const PostComposer: React.FC<PostComposerProps> = ({
 
       setValue('caption', result.caption);
       toast.success('Caption generated!');
-    } catch (err) {
+    } catch {
       toast.error('Failed to generate caption');
     } finally {
       setAiLoading(false);
@@ -184,7 +183,7 @@ const PostComposer: React.FC<PostComposerProps> = ({
       const hashtagString = result.hashtags.join(' ');
       setValue('firstComment', hashtagString);
       toast.success('Hashtags generated!');
-    } catch (err) {
+    } catch {
       toast.error('Failed to generate hashtags');
     } finally {
       setHashtagLoading(false);
@@ -294,18 +293,7 @@ const PostComposer: React.FC<PostComposerProps> = ({
     }
   };
 
-  const getPostTypeIcon = (type: PostType) => {
-    switch (type) {
-      case 'feed':
-        return <ImageIcon />;
-      case 'story':
-        return <StoryIcon />;
-      case 'reel':
-        return <ReelIcon />;
-      case 'carousel':
-        return <CarouselIcon />;
-    }
-  };
+  // Post type icons handled inline where needed.
 
   return (
     <LocalizationProvider dateAdapter={AdapterDateFns}>

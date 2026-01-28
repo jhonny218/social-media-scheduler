@@ -119,7 +119,10 @@ const AccountConnect: React.FC = () => {
           url.searchParams.delete('connected');
           url.searchParams.delete('error');
           window.history.replaceState({}, document.title, url.toString());
-        } catch {}
+        } catch (e) {
+          // best-effort URL cleanup
+          console.warn('Failed to clean URL params', e);
+        }
       } catch {
         toast.error('Failed to connect Instagram account');
       }
@@ -153,9 +156,10 @@ const AccountConnect: React.FC = () => {
   };
 
   // Format token expiry date
-  const formatExpiry = (timestamp: any): string => {
+  const formatExpiry = (timestamp: unknown): string => {
     try {
-      const date = timestamp?.toDate?.() || new Date(timestamp);
+      const maybe = timestamp as { toDate?: () => Date };
+      const date = maybe?.toDate ? maybe.toDate() : new Date(String(timestamp));
       return format(date, 'MMM d, yyyy');
     } catch {
       return 'Unknown';
@@ -163,9 +167,10 @@ const AccountConnect: React.FC = () => {
   };
 
   // Check if token is expired or expiring soon
-  const isTokenExpiringSoon = (timestamp: any): boolean => {
+  const isTokenExpiringSoon = (timestamp: unknown): boolean => {
     try {
-      const date = timestamp?.toDate?.() || new Date(timestamp);
+      const maybe = timestamp as { toDate?: () => Date };
+      const date = maybe?.toDate ? maybe.toDate() : new Date(String(timestamp));
       const daysUntilExpiry = (date.getTime() - Date.now()) / (1000 * 60 * 60 * 24);
       return daysUntilExpiry < 7;
     } catch {
