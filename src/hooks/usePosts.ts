@@ -175,6 +175,10 @@ export const usePosts = (options: UsePostsOptions = {}): UsePostsReturn => {
   const [error, setError] = useState<string | null>(null);
   const [refreshTrigger, setRefreshTrigger] = useState(0);
 
+  // Extract date timestamps for stable dependency comparison
+  const startDateTimestamp = options.startDate?.getTime();
+  const endDateTimestamp = options.endDate?.getTime();
+
   // Force refresh posts
   const refreshPosts = useCallback(() => {
     setRefreshTrigger((prev) => prev + 1);
@@ -278,12 +282,13 @@ export const usePosts = (options: UsePostsOptions = {}): UsePostsReturn => {
     return () => {
       supabase.removeChannel(channel);
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- Using timestamps for stable date comparison
   }, [
     user?.id,
     options.status,
     options.accountId,
-    options.startDate?.getTime(),
-    options.endDate?.getTime(),
+    startDateTimestamp,
+    endDateTimestamp,
     refreshTrigger,
   ]);
 
