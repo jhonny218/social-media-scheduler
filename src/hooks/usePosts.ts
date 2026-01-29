@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
-import { supabase, TABLES, PLATFORMS } from '../config/supabase';
+import { supabase, TABLES, PLATFORMS, STORAGE_BUCKETS } from '../config/supabase';
 import { useAuth } from './useAuth';
-import { ScheduledPost, PostInput, PostStatus, CalendarEvent, PostMedia } from '../types';
+import { ScheduledPost, PostInput, PostStatus, CalendarEvent, PostMedia, ReelCover } from '../types';
 
 interface UsePostsOptions {
   status?: PostStatus | PostStatus[];
@@ -39,9 +39,48 @@ interface PostRow {
   permalink: string | null;
   published_at: string | null;
   first_comment: string | null;
+  reel_cover: { type: 'frame' | 'custom'; storagePath: string; timestamp?: number } | null;
   error_message: string | null;
   created_at: string;
   updated_at: string;
+}
+
+const SIGNED_URL_EXPIRY_SECONDS = 60 * 60; // 1 hour
+
+// Generate signed URLs for reel covers
+async function attachReelCoverUrls(posts: ScheduledPost[]): Promise<ScheduledPost[]> {
+  const postsWithCovers = posts.filter(p => p.reelCover?.storagePath);
+  if (postsWithCovers.length === 0) return posts;
+
+  const paths = postsWithCovers.map(p => p.reelCover!.storagePath);
+
+  const { data: signedData, error } = await supabase.storage
+    .from(STORAGE_BUCKETS.MEDIA)
+    .createSignedUrls(paths, SIGNED_URL_EXPIRY_SECONDS);
+
+  if (error || !signedData) {
+    console.error('Failed to generate signed URLs for covers:', error);
+    return posts;
+  }
+
+  const urlByPath = new Map(
+    signedData
+      .filter(entry => entry.path && !entry.error)
+      .map(entry => [entry.path as string, entry.signedUrl])
+  );
+
+  return posts.map(post => {
+    if (post.reelCover?.storagePath) {
+      const url = urlByPath.get(post.reelCover.storagePath);
+      if (url) {
+        return {
+          ...post,
+          reelCover: { ...post.reelCover, url } as ReelCover,
+        };
+      }
+    }
+    return post;
+  });
 }
 
 // Convert database row to ScheduledPost type
@@ -54,6 +93,7 @@ const dbRowToPost = (row: PostRow): ScheduledPost => ({
   postType: row.post_type as ScheduledPost['postType'],
   caption: row.caption || undefined,
   media: (row.media as PostMedia[]) || [],
+  reelCover: row.reel_cover || undefined,
   scheduledTime: row.scheduled_time,
   status: row.status as PostStatus,
   publishMethod: row.publish_method as ScheduledPost['publishMethod'],
@@ -87,7 +127,7 @@ export const usePosts = (options: UsePostsOptions = {}): UsePostsReturn => {
       id: post.id,
       title: post.caption?.slice(0, 50) || `${post.postType} post`,
       start: scheduledTime,
-      end: new Date(scheduledTime.getTime() + 30 * 60 * 1000),
+      end: new Date(scheduledTime.getTime() + 60 * 60 * 1000),
       resource: post,
     };
   });
@@ -139,7 +179,9 @@ export const usePosts = (options: UsePostsOptions = {}): UsePostsReturn => {
           throw fetchError;
         }
 
-        setPosts((data || []).map(dbRowToPost));
+        const posts = (data || []).map(dbRowToPost);
+        const postsWithUrls = await attachReelCoverUrls(posts);
+        setPosts(postsWithUrls);
         setError(null);
       } catch (err) {
         console.error('Error fetching posts:', err);

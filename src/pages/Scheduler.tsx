@@ -75,6 +75,7 @@ const Scheduler: React.FC = () => {
   // Grid-specific filters
   const [gridView, setGridView] = useState<'all' | 'reels'>('all');
   const [showCarousels, setShowCarousels] = useState(true);
+  const [showReels, setShowReels] = useState(true);
 
   // Set first Instagram account as default for grid view when accounts load
   useEffect(() => {
@@ -130,11 +131,11 @@ const Scheduler: React.FC = () => {
   const filteredGridPosts = useMemo(() => {
     return filterPostsForGrid(posts, {
       showFeed: gridView === 'all',
-      showReels: true,
+      showReels: gridView === 'reels' ? true : showReels,
       showCarousels: gridView === 'all' ? showCarousels : false,
       accountId: selectedAccount,
     });
-  }, [posts, gridView, showCarousels, selectedAccount]);
+  }, [posts, gridView, showCarousels, showReels, selectedAccount]);
 
   // Handle date range change from calendar
   const handleDateRangeChange = useCallback((start: Date, end: Date) => {
@@ -208,6 +209,7 @@ const Scheduler: React.FC = () => {
 
     try {
       await deletePost(deleteDialog.postId);
+      refreshPosts();
       toast.success('Post deleted');
       // Close details modal if open
       if (detailsModalOpen && detailsModalPost?.id === deleteDialog.postId) {
@@ -223,9 +225,14 @@ const Scheduler: React.FC = () => {
 
   // Handle post reorder in grid view
   const handlePostReorder = useCallback(
-    async (postId: string, sourceIndex: number, destinationIndex: number) => {
+    async (
+      orderedPosts: ScheduledPost[],
+      postId: string,
+      sourceIndex: number,
+      destinationIndex: number
+    ) => {
       // Find the post to check its status
-      const post = posts.find(p => p.id === postId);
+      const post = orderedPosts.find(p => p.id === postId);
 
       // Only allow reordering of scheduled posts (not published posts)
       if (post?.status !== 'scheduled') {
@@ -233,14 +240,14 @@ const Scheduler: React.FC = () => {
         return;
       }
       try {
-        await reorderPost(posts, postId, sourceIndex, destinationIndex);
+        await reorderPost(orderedPosts, postId, sourceIndex, destinationIndex);
         toast.success('Post reordered');
         refreshPosts();
       } catch {
         toast.error('Failed to reorder post');
       }
     },
-    [posts, reorderPost, refreshPosts]
+    [reorderPost, refreshPosts]
   );
 
   // Refresh all data (scheduled posts and Instagram media)
@@ -364,6 +371,8 @@ const Scheduler: React.FC = () => {
           onGridViewChange={setGridView}
           showCarousels={showCarousels}
           onShowCarouselsChange={setShowCarousels}
+          showReels={showReels}
+          onShowReelsChange={setShowReels}
           totalPosts={posts.length}
           filteredCount={filteredGridPosts.length}
         />
@@ -429,6 +438,7 @@ const Scheduler: React.FC = () => {
           posts={posts}
           loading={isLoading || isReordering}
           showCarousels={showCarousels}
+          showReels={showReels}
           gridView={gridView}
           selectedAccountId={selectedAccount}
           onPostClick={handlePostClick}
@@ -521,7 +531,7 @@ const Scheduler: React.FC = () => {
                   ? editingPost.scheduledTime
                   : typeof editingPost.scheduledTime === 'object' && editingPost.scheduledTime && 'toDate' in editingPost.scheduledTime
                     ? (editingPost.scheduledTime as { toDate: () => Date }).toDate()
-                    : new Date(),
+                    : new Date(editingPost.scheduledTime as string),
                 accountId: editingPost.accountId,
                 postType: ['feed', 'story', 'reel', 'carousel'].includes(editingPost.postType)
                   ? (editingPost.postType as 'feed' | 'story' | 'reel' | 'carousel')
@@ -531,6 +541,7 @@ const Scheduler: React.FC = () => {
             ? { scheduledTime: composerInitialDate }
             : undefined
         }
+        initialMedia={editingPost?.media}
         editPostId={editingPost?.id || undefined}
       />
 

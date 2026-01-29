@@ -282,6 +282,33 @@ const PostDetailsModal: React.FC<PostDetailsModalProps> = ({
               </Typography>
             </Box>
 
+            {/* Reel Cover Preview */}
+            {post.postType === 'reel' && post.reelCover?.url && (
+              <Box sx={{ mb: 2 }}>
+                <Typography variant="subtitle2" gutterBottom color="text.secondary">
+                  Cover Image
+                </Typography>
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+                  <Box
+                    component="img"
+                    src={post.reelCover.url}
+                    alt="Reel cover"
+                    sx={{
+                      width: 60,
+                      height: 80,
+                      objectFit: 'cover',
+                      borderRadius: 1,
+                      border: '2px solid',
+                      borderColor: 'primary.main',
+                    }}
+                  />
+                  <Typography variant="caption" color="text.secondary">
+                    {post.reelCover.type === 'frame' ? 'Video Frame' : 'Custom Image'}
+                  </Typography>
+                </Box>
+              </Box>
+            )}
+
             <Divider sx={{ my: 2 }} />
 
             {/* Caption */}

@@ -227,6 +227,63 @@ export class MediaService {
     return results;
   }
 
+  // Upload a base64 image (used for reel covers)
+  // Returns the storage path (not a signed URL) so it can be stored in the database
+  async uploadBase64Image(base64Data: string, prefix: string = 'cover'): Promise<string> {
+    // Extract mime type and data from base64 string
+    const matches = base64Data.match(/^data:([^;]+);base64,(.+)$/);
+    if (!matches) {
+      throw new Error('Invalid base64 data');
+    }
+
+    const mimeType = matches[1];
+    const base64Content = matches[2];
+
+    // Convert base64 to Blob
+    const byteCharacters = atob(base64Content);
+    const byteNumbers = new Array(byteCharacters.length);
+    for (let i = 0; i < byteCharacters.length; i++) {
+      byteNumbers[i] = byteCharacters.charCodeAt(i);
+    }
+    const byteArray = new Uint8Array(byteNumbers);
+    const blob = new Blob([byteArray], { type: mimeType });
+
+    // Generate filename
+    const extension = mimeType.split('/')[1] || 'jpg';
+    const fileName = `${prefix}_${uuidv4()}.${extension}`;
+    const storagePath = `${this.storagePath}/${fileName}`;
+
+    // Create signed upload URL
+    const { data: signedUpload, error: signedUploadError } = await supabase.storage
+      .from(STORAGE_BUCKETS.MEDIA)
+      .createSignedUploadUrl(storagePath, { upsert: false });
+
+    if (signedUploadError || !signedUpload?.token) {
+      throw new Error(`Failed to create signed upload URL: ${signedUploadError?.message || 'Unknown error'}`);
+    }
+
+    // Upload to storage
+    const { error: uploadError } = await supabase.storage
+      .from(STORAGE_BUCKETS.MEDIA)
+      .uploadToSignedUrl(storagePath, signedUpload.token, blob, {
+        cacheControl: '3600',
+        contentType: mimeType,
+      });
+
+    if (uploadError) {
+      throw new Error(`Upload failed: ${uploadError.message}`);
+    }
+
+    // Return the storage path (not the signed URL)
+    // The signed URL will be generated when fetching posts
+    return storagePath;
+  }
+
+  // Generate a signed URL for a storage path (public method for use by other services)
+  async getSignedUrl(storagePath: string): Promise<string> {
+    return this.createSignedUrl(storagePath);
+  }
+
   // Get all media items
   async getAllMedia(): Promise<MediaItem[]> {
     const { data, error } = await supabase

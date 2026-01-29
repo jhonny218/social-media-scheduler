@@ -32,7 +32,7 @@ import { DragDropContext, Droppable, Draggable, DropResult } from '@hello-pangea
 import toast from 'react-hot-toast';
 import { useAuth } from '../../hooks/useAuth';
 import { MediaService } from '../../services/media.service';
-import { MediaItem } from '../../types';
+import { MediaItem, PostMedia } from '../../types';
 import ReelCoverSelector from './ReelCoverSelector';
 
 export interface UploadedFile {
@@ -45,6 +45,8 @@ export interface UploadedFile {
   // For media library items
   isFromLibrary?: boolean;
   mediaItem?: MediaItem;
+  // For existing post media when editing
+  existingMedia?: PostMedia;
 }
 
 interface MediaUploaderProps {

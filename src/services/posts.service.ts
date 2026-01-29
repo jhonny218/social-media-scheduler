@@ -1,5 +1,7 @@
-import { supabase, TABLES } from '../config/supabase';
-import { ScheduledPost, PostInput, PostStatus, PostMedia } from '../types';
+import { supabase, TABLES, STORAGE_BUCKETS } from '../config/supabase';
+import { ScheduledPost, PostInput, PostStatus, PostMedia, ReelCover } from '../types';
+
+const SIGNED_URL_EXPIRY_SECONDS = 60 * 60; // 1 hour
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const dbRowToPost = (row: any): ScheduledPost => ({
@@ -24,6 +26,42 @@ const dbRowToPost = (row: any): ScheduledPost => ({
   updatedAt: row.updated_at,
 });
 
+// Generate signed URLs for reel covers
+async function attachReelCoverUrls(posts: ScheduledPost[]): Promise<ScheduledPost[]> {
+  const postsWithCovers = posts.filter(p => p.reelCover?.storagePath);
+  if (postsWithCovers.length === 0) return posts;
+
+  const paths = postsWithCovers.map(p => p.reelCover!.storagePath);
+
+  const { data: signedData, error } = await supabase.storage
+    .from(STORAGE_BUCKETS.MEDIA)
+    .createSignedUrls(paths, SIGNED_URL_EXPIRY_SECONDS);
+
+  if (error || !signedData) {
+    console.error('Failed to generate signed URLs for covers:', error);
+    return posts;
+  }
+
+  const urlByPath = new Map(
+    signedData
+      .filter(entry => entry.path && !entry.error)
+      .map(entry => [entry.path as string, entry.signedUrl])
+  );
+
+  return posts.map(post => {
+    if (post.reelCover?.storagePath) {
+      const url = urlByPath.get(post.reelCover.storagePath);
+      if (url) {
+        return {
+          ...post,
+          reelCover: { ...post.reelCover, url } as ReelCover,
+        };
+      }
+    }
+    return post;
+  });
+}
+
 export class PostsService {
   private userId: string;
 
@@ -43,7 +81,8 @@ export class PostsService {
       throw new Error(`Failed to fetch posts: ${error.message}`);
     }
 
-    return (data || []).map(dbRowToPost);
+    const posts = (data || []).map(dbRowToPost);
+    return attachReelCoverUrls(posts);
   }
 
   // Get posts with pagination
@@ -63,9 +102,10 @@ export class PostsService {
     }
 
     const posts = (data || []).map(dbRowToPost);
+    const postsWithUrls = await attachReelCoverUrls(posts);
     const hasMore = count ? offset + pageSize < count : false;
 
-    return { posts, hasMore };
+    return { posts: postsWithUrls, hasMore };
   }
 
   // Get posts by status
@@ -87,7 +127,8 @@ export class PostsService {
       throw new Error(`Failed to fetch posts: ${error.message}`);
     }
 
-    return (data || []).map(dbRowToPost);
+    const posts = (data || []).map(dbRowToPost);
+    return attachReelCoverUrls(posts);
   }
 
   // Get posts for a date range
@@ -104,7 +145,8 @@ export class PostsService {
       throw new Error(`Failed to fetch posts: ${error.message}`);
     }
 
-    return (data || []).map(dbRowToPost);
+    const posts = (data || []).map(dbRowToPost);
+    return attachReelCoverUrls(posts);
   }
 
   // Get posts for a specific account
@@ -120,7 +162,8 @@ export class PostsService {
       throw new Error(`Failed to fetch posts: ${error.message}`);
     }
 
-    return (data || []).map(dbRowToPost);
+    const posts = (data || []).map(dbRowToPost);
+    return attachReelCoverUrls(posts);
   }
 
   // Get a single post by ID
@@ -139,7 +182,11 @@ export class PostsService {
       throw new Error(`Failed to fetch post: ${error.message}`);
     }
 
-    return data ? dbRowToPost(data) : null;
+    if (!data) return null;
+
+    const post = dbRowToPost(data);
+    const [postWithUrl] = await attachReelCoverUrls([post]);
+    return postWithUrl;
   }
 
   // Create a new post
@@ -271,7 +318,8 @@ export class PostsService {
       throw new Error(`Failed to fetch posts to publish: ${error.message}`);
     }
 
-    return (data || []).map(dbRowToPost);
+    const posts = (data || []).map(dbRowToPost);
+    return attachReelCoverUrls(posts);
   }
 
   // Get post statistics

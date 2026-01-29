@@ -32,6 +32,8 @@ interface GridFiltersProps {
   onGridViewChange: (view: GridViewMode) => void;
   showCarousels: boolean;
   onShowCarouselsChange: (show: boolean) => void;
+  showReels: boolean;
+  onShowReelsChange: (show: boolean) => void;
   totalPosts: number;
   filteredCount: number;
 }
@@ -44,6 +46,8 @@ const GridFilters: React.FC<GridFiltersProps> = ({
   onGridViewChange,
   showCarousels,
   onShowCarouselsChange,
+  showReels,
+  onShowReelsChange,
   totalPosts,
   filteredCount,
 }) => {
@@ -110,6 +114,23 @@ const GridFilters: React.FC<GridFiltersProps> = ({
 
         {/* Right side - Post count */}
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+          {gridView === 'all' && (
+            <FormControlLabel
+              control={
+                <Switch
+                  checked={showReels}
+                  onChange={(e) => onShowReelsChange(e.target.checked)}
+                  size="small"
+                />
+              }
+              label={
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                  <ReelIcon fontSize="small" />
+                  <Typography variant="body2">Reels</Typography>
+                </Box>
+              }
+            />
+          )}
           {gridView === 'all' && (
             <FormControlLabel
               control={

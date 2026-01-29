@@ -1,27 +1,23 @@
-import React, { useState, useCallback, useMemo } from 'react';
+import React, { useState, useCallback, useMemo, useEffect } from 'react';
 import {
   Box,
   Paper,
   Typography,
-  Dialog,
-  DialogTitle,
-  DialogContent,
-  DialogActions,
-  Button,
-  IconButton,
-  Chip,
-  Divider,
   useTheme,
 } from '@mui/material';
-import {
-  Close as CloseIcon,
-  Schedule as ScheduleIcon,
-  CheckCircle as PublishedIcon,
-  Error as FailedIcon,
-} from '@mui/icons-material';
 import { Calendar, dateFnsLocalizer, Views } from 'react-big-calendar';
 import type { View, SlotInfo } from 'react-big-calendar';
-import { format, parse, startOfWeek, getDay, startOfMonth, endOfMonth } from 'date-fns';
+import {
+  format,
+  parse,
+  startOfWeek,
+  getDay,
+  startOfMonth,
+  endOfMonth,
+  endOfWeek,
+  startOfDay,
+  endOfDay,
+} from 'date-fns';
 import { enUS } from 'date-fns/locale';
 import 'react-big-calendar/lib/css/react-big-calendar.css';
 import type { CalendarEvent, ScheduledPost, PostStatus } from '../../types';
@@ -58,20 +54,13 @@ const CalendarView: React.FC<CalendarViewProps> = ({
   const theme = useTheme();
   const [view, setView] = useState<View>(Views.MONTH);
   const [date, setDate] = useState(new Date());
-  const [selectedEvent, setSelectedEvent] = useState<CalendarEvent | null>(null);
-  const [detailsOpen, setDetailsOpen] = useState(false);
 
   // Handle navigation
   const handleNavigate = useCallback(
     (newDate: Date) => {
       setDate(newDate);
-      if (onDateRangeChange) {
-        const start = startOfMonth(newDate);
-        const end = endOfMonth(newDate);
-        onDateRangeChange(start, end);
-      }
     },
-    [onDateRangeChange]
+    []
   );
 
   // Handle view change
@@ -79,11 +68,26 @@ const CalendarView: React.FC<CalendarViewProps> = ({
     setView(newView);
   }, []);
 
+  // Keep date range in sync with current view/date
+  useEffect(() => {
+    if (!onDateRangeChange) return;
+
+    if (view === Views.MONTH) {
+      onDateRangeChange(startOfMonth(date), endOfMonth(date));
+      return;
+    }
+
+    if (view === Views.WEEK) {
+      onDateRangeChange(startOfWeek(date), endOfWeek(date));
+      return;
+    }
+
+    onDateRangeChange(startOfDay(date), endOfDay(date));
+  }, [date, view, onDateRangeChange]);
+
   // Handle event selection
   const handleSelectEvent = useCallback(
     (event: CalendarEvent) => {
-      setSelectedEvent(event);
-      setDetailsOpen(true);
       onEventClick?.(event.resource);
     },
     [onEventClick]
@@ -96,12 +100,6 @@ const CalendarView: React.FC<CalendarViewProps> = ({
     },
     [onSlotClick]
   );
-
-  // Close details dialog
-  const handleCloseDetails = () => {
-    setDetailsOpen(false);
-    setSelectedEvent(null);
-  };
 
   // Get status color
   const getStatusColor = useCallback((status: PostStatus): string => {
@@ -124,22 +122,38 @@ const CalendarView: React.FC<CalendarViewProps> = ({
   const eventStyleGetter = useCallback(
     (event: CalendarEvent) => {
       const status = event.resource.status;
-      const backgroundColor = getStatusColor(status);
+      const accentColor = getStatusColor(status);
+
+      if (view === Views.MONTH) {
+        return {
+          style: {
+            backgroundColor: accentColor,
+            borderRadius: '4px',
+            opacity: 0.9,
+            color: 'white',
+            border: 'none',
+            display: 'block',
+            fontSize: '12px',
+            padding: '2px 4px',
+          },
+        };
+      }
 
       return {
         style: {
-          backgroundColor,
-          borderRadius: '4px',
-          opacity: 0.9,
-          color: 'white',
-          border: 'none',
+          backgroundColor: theme.palette.common.white,
+          borderRadius: '8px',
+          color: theme.palette.text.primary,
+          border: `1px solid ${theme.palette.divider}`,
+          borderLeft: `8px solid ${accentColor}`,
           display: 'block',
           fontSize: '12px',
-          padding: '2px 4px',
+          padding: '6px 8px',
+          boxShadow: '0 2px 6px rgba(0,0,0,0.08)',
         },
       };
     },
-    [getStatusColor]
+    [getStatusColor, theme, view]
   );
 
   // Custom event component
@@ -147,45 +161,139 @@ const CalendarView: React.FC<CalendarViewProps> = ({
     () =>
       ({ event }: { event: CalendarEvent }) => {
         const post = event.resource;
-        const thumbnailUrl = post.media?.[0]?.url;
+        const thumbnailUrl =
+          post.reelCover?.url ||
+          post.media?.[0]?.thumbnailUrl ||
+          post.media?.[0]?.url;
+        const title = post.caption?.trim() || `${post.postType} post`;
+        const startTime = format(event.start, 'h:mm a');
+        const statusLabel = post.status.charAt(0).toUpperCase() + post.status.slice(1);
+        const typeLabel = post.postType.charAt(0).toUpperCase() + post.postType.slice(1);
+
+        if (view === Views.MONTH) {
+          return (
+            <Box
+              sx={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 0.5,
+                overflow: 'hidden',
+              }}
+            >
+              {thumbnailUrl && (
+                <Box
+                  component="img"
+                  src={thumbnailUrl}
+                  alt=""
+                  sx={{
+                    width: 18,
+                    height: 18,
+                    borderRadius: 0.5,
+                    objectFit: 'cover',
+                    flexShrink: 0,
+                  }}
+                />
+              )}
+              <Box sx={{ minWidth: 0 }}>
+                <Typography
+                  variant="caption"
+                  sx={{
+                    display: 'block',
+                    fontWeight: 600,
+                    lineHeight: 1.15,
+                    overflow: 'hidden',
+                    textOverflow: 'ellipsis',
+                    whiteSpace: 'nowrap',
+                  }}
+                >
+                  {title}
+                </Typography>
+                <Typography
+                  variant="caption"
+                  sx={{
+                    display: 'block',
+                    lineHeight: 1.1,
+                    opacity: 0.9,
+                    overflow: 'hidden',
+                    textOverflow: 'ellipsis',
+                    whiteSpace: 'nowrap',
+                  }}
+                >
+                  {`${typeLabel} - ${statusLabel}`}
+                </Typography>
+              </Box>
+            </Box>
+          );
+        }
 
         return (
           <Box
             sx={{
               display: 'flex',
+              gap: 1,
               alignItems: 'center',
-              gap: 0.5,
+              height: '100%',
               overflow: 'hidden',
             }}
           >
-            {thumbnailUrl && (
+            {thumbnailUrl ? (
               <Box
                 component="img"
                 src={thumbnailUrl}
                 alt=""
                 sx={{
-                  width: 16,
-                  height: 16,
-                  borderRadius: 0.5,
+                  width: 40,
+                  height: 40,
+                  borderRadius: 1,
                   objectFit: 'cover',
+                  flexShrink: 0,
+                  border: `1px solid ${theme.palette.divider}`,
+                }}
+              />
+            ) : (
+              <Box
+                sx={{
+                  width: 40,
+                  height: 40,
+                  borderRadius: 1,
+                  backgroundColor: theme.palette.grey[200],
                   flexShrink: 0,
                 }}
               />
             )}
-            <Typography
-              variant="caption"
-              sx={{
-                overflow: 'hidden',
-                textOverflow: 'ellipsis',
-                whiteSpace: 'nowrap',
-              }}
-            >
-              {event.title}
-            </Typography>
+            <Box sx={{ minWidth: 0 }}>
+              <Typography
+                variant="caption"
+                color="text.secondary"
+                sx={{ lineHeight: 1.2, display: 'block', mb: 0.25 }}
+              >
+                {startTime}
+              </Typography>
+              <Typography
+                variant="body2"
+                sx={{
+                  fontWeight: 600,
+                  lineHeight: 1.2,
+                  display: '-webkit-box',
+                  WebkitLineClamp: 2,
+                  WebkitBoxOrient: 'vertical',
+                  overflow: 'hidden',
+                }}
+              >
+                {title}
+              </Typography>
+              <Typography
+                variant="caption"
+                color="text.secondary"
+                sx={{ lineHeight: 1.2 }}
+              >
+                {`${typeLabel} - ${statusLabel}`}
+              </Typography>
+            </Box>
           </Box>
         );
       },
-    []
+    [theme, view]
   );
 
   // Components configuration
@@ -197,13 +305,20 @@ const CalendarView: React.FC<CalendarViewProps> = ({
   );
 
   return (
-    <Box sx={{ height: '100%', minHeight: 600 }}>
+    <Box sx={{ width: '100%', minHeight: 640 }}>
       <Paper
         sx={{
-          height: '100%',
+          height: 700,
           p: 2,
           '& .rbc-calendar': {
             fontFamily: theme.typography.fontFamily,
+            height: '100%',
+          },
+          '& .rbc-month-view': {
+            height: '100%',
+          },
+          '& .rbc-month-row': {
+            minHeight: 90,
           },
           '& .rbc-header': {
             padding: '8px',
@@ -218,6 +333,15 @@ const CalendarView: React.FC<CalendarViewProps> = ({
           },
           '& .rbc-event': {
             padding: '2px 4px',
+          },
+          '& .rbc-time-view .rbc-event': {
+            minHeight: 84,
+          },
+          '& .rbc-time-view .rbc-event-label': {
+            display: 'none',
+          },
+          '& .rbc-time-view .rbc-event-content': {
+            height: '100%',
           },
           '& .rbc-event:focus': {
             outline: `2px solid ${theme.palette.primary.main}`,
@@ -267,151 +391,6 @@ const CalendarView: React.FC<CalendarViewProps> = ({
           showMultiDayTimes
         />
       </Paper>
-
-      {/* Event Details Dialog */}
-      <Dialog
-        open={detailsOpen}
-        onClose={handleCloseDetails}
-        maxWidth="sm"
-        fullWidth
-      >
-        {selectedEvent && (
-          <>
-            <DialogTitle
-              sx={{
-                display: 'flex',
-                justifyContent: 'space-between',
-                alignItems: 'center',
-              }}
-            >
-              <Typography variant="h6">Post Details</Typography>
-              <IconButton onClick={handleCloseDetails} size="small">
-                <CloseIcon />
-              </IconButton>
-            </DialogTitle>
-            <DialogContent>
-              {/* Media Preview */}
-              {selectedEvent.resource.media?.[0]?.url && (
-                <Box
-                  sx={{
-                    width: '100%',
-                    paddingTop: '56.25%', // 16:9 aspect ratio
-                    position: 'relative',
-                    borderRadius: 2,
-                    overflow: 'hidden',
-                    mb: 2,
-                  }}
-                >
-                  {selectedEvent.resource.media[0].type === 'video' ? (
-                    <Box
-                      component="video"
-                      src={selectedEvent.resource.media[0].url}
-                      controls
-                      sx={{
-                        position: 'absolute',
-                        top: 0,
-                        left: 0,
-                        width: '100%',
-                        height: '100%',
-                        objectFit: 'cover',
-                      }}
-                    />
-                  ) : (
-                    <Box
-                      component="img"
-                      src={selectedEvent.resource.media[0].url}
-                      alt="Post media"
-                      sx={{
-                        position: 'absolute',
-                        top: 0,
-                        left: 0,
-                        width: '100%',
-                        height: '100%',
-                        objectFit: 'cover',
-                      }}
-                    />
-                  )}
-                </Box>
-              )}
-
-              {/* Status */}
-              <Box sx={{ mb: 2 }}>
-                <Chip
-                  icon={
-                    selectedEvent.resource.status === 'published' ? (
-                      <PublishedIcon />
-                    ) : selectedEvent.resource.status === 'failed' ? (
-                      <FailedIcon />
-                    ) : (
-                      <ScheduleIcon />
-                    )
-                  }
-                  label={selectedEvent.resource.status}
-                  color={
-                    selectedEvent.resource.status === 'published'
-                      ? 'success'
-                      : selectedEvent.resource.status === 'failed'
-                      ? 'error'
-                      : 'info'
-                  }
-                  sx={{ textTransform: 'capitalize' }}
-                />
-                <Chip
-                  label={selectedEvent.resource.postType}
-                  variant="outlined"
-                  sx={{ ml: 1, textTransform: 'capitalize' }}
-                />
-              </Box>
-
-              <Divider sx={{ my: 2 }} />
-
-              {/* Caption */}
-              <Typography variant="subtitle2" gutterBottom>
-                Caption
-              </Typography>
-              <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-                {selectedEvent.resource.caption || 'No caption'}
-              </Typography>
-
-              {/* First Comment */}
-              {selectedEvent.resource.firstComment && (
-                <>
-                  <Typography variant="subtitle2" gutterBottom>
-                    First Comment
-                  </Typography>
-                  <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-                    {selectedEvent.resource.firstComment}
-                  </Typography>
-                </>
-              )}
-
-              {/* Schedule Time */}
-              <Typography variant="subtitle2" gutterBottom>
-                Scheduled For
-              </Typography>
-              <Typography variant="body2" color="text.secondary">
-                {format(selectedEvent.start, 'MMMM d, yyyy h:mm a')}
-              </Typography>
-
-              {/* Error Message */}
-              {selectedEvent.resource.status === 'failed' &&
-                selectedEvent.resource.errorMessage && (
-                  <Box sx={{ mt: 2 }}>
-                    <Typography variant="subtitle2" color="error" gutterBottom>
-                      Error
-                    </Typography>
-                    <Typography variant="body2" color="error">
-                      {selectedEvent.resource.errorMessage}
-                    </Typography>
-                  </Box>
-                )}
-            </DialogContent>
-            <DialogActions>
-              <Button onClick={handleCloseDetails}>Close</Button>
-            </DialogActions>
-          </>
-        )}
-      </Dialog>
     </Box>
   );
 };

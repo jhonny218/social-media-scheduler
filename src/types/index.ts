@@ -60,11 +60,19 @@ export interface PostMedia {
   thumbnailUrl?: string;
 }
 
-// Reel cover type
+// Reel cover type (stored in database)
 export interface ReelCover {
   type: 'frame' | 'custom';
-  data: string; // Base64 data URL or image URL
+  storagePath: string; // Storage path for generating signed URLs
+  url?: string; // Signed URL (populated when fetching, not stored)
   timestamp?: number; // Video timestamp if type is 'frame'
+}
+
+// Local reel cover (before upload) - used in UI
+export interface ReelCoverLocal {
+  type: 'frame' | 'custom';
+  data: string; // Base64 data URL for preview
+  timestamp?: number;
 }
 
 export interface ScheduledPost {

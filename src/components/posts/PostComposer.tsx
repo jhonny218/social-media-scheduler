@@ -63,6 +63,7 @@ interface PostComposerProps {
   onClose: () => void;
   onSuccess: () => void;
   initialData?: Partial<PostFormData>;
+  initialMedia?: PostMedia[];
   editPostId?: string;
 }
 
@@ -71,6 +72,7 @@ const PostComposer: React.FC<PostComposerProps> = ({
   onClose,
   onSuccess,
   initialData,
+  initialMedia,
   editPostId,
 }) => {
   const isEditing = !!editPostId;
@@ -82,6 +84,7 @@ const PostComposer: React.FC<PostComposerProps> = ({
   const [hashtagLoading, setHashtagLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [captionTone, setCaptionTone] = useState<'casual' | 'professional' | 'playful' | 'inspirational'>('casual');
+  // Local cover state (base64 for preview, will be uploaded on submit)
   const [reelCover, setReelCover] = useState<{ type: 'frame' | 'custom'; data: string; timestamp?: number } | null>(null);
 
   const {
@@ -107,6 +110,23 @@ const PostComposer: React.FC<PostComposerProps> = ({
   const caption = watch('caption');
   const accountId = watch('accountId');
 
+  const buildDefaultValues = (data?: Partial<PostFormData>): PostFormData => {
+    const scheduled =
+      data?.scheduledTime instanceof Date
+        ? data.scheduledTime
+        : data?.scheduledTime
+          ? new Date(data.scheduledTime)
+          : addMinutes(new Date(), 30);
+
+    return {
+      accountId: data?.accountId ?? '',
+      postType: data?.postType ?? 'feed',
+      caption: data?.caption ?? '',
+      firstComment: data?.firstComment ?? '',
+      scheduledTime: scheduled,
+    };
+  };
+
   // Reset form when dialog closes
   useEffect(() => {
     if (!open) {
@@ -116,6 +136,33 @@ const PostComposer: React.FC<PostComposerProps> = ({
       setReelCover(null);
     }
   }, [open, reset]);
+
+  // Initialize form values when opening/editing
+  useEffect(() => {
+    if (!open) return;
+    reset(buildDefaultValues(initialData));
+  }, [open, initialData, reset]);
+
+  // Initialize media when editing
+  useEffect(() => {
+    if (!open) return;
+    if (initialMedia && initialMedia.length > 0) {
+      const orderedMedia = [...initialMedia].sort(
+        (a, b) => (a.order ?? 0) - (b.order ?? 0)
+      );
+      const seededFiles: UploadedFile[] = orderedMedia.map((media, index) => ({
+        id: `edit-${media.id}-${index}`,
+        preview: media.thumbnailUrl || media.url,
+        type: media.type,
+        progress: 100,
+        uploaded: true,
+        existingMedia: media,
+      }));
+      setFiles(seededFiles);
+      return;
+    }
+    setFiles([]);
+  }, [open, initialMedia]);
 
   // Clear reel cover when post type changes away from reel
   useEffect(() => {
@@ -370,6 +417,15 @@ const PostComposer: React.FC<PostComposerProps> = ({
       for (let i = 0; i < files.length; i++) {
         const file = files[i];
 
+        // If existing media (from editing), keep as-is
+        if (file.existingMedia) {
+          uploadedMedia.push({
+            ...file.existingMedia,
+            order: i,
+          });
+          continue;
+        }
+
         // If from media library, use existing media item data
         if (file.isFromLibrary && file.mediaItem) {
           uploadedMedia.push({
@@ -418,6 +474,25 @@ const PostComposer: React.FC<PostComposerProps> = ({
         throw new Error('Selected account not found');
       }
 
+      // Upload reel cover if present
+      let uploadedReelCover: { type: 'frame' | 'custom'; storagePath: string; timestamp?: number } | undefined;
+      if (data.postType === 'reel' && reelCover?.data) {
+        try {
+          toast.loading('Uploading cover image...', { id: 'cover-upload' });
+          const coverStoragePath = await mediaService.uploadBase64Image(reelCover.data, 'reel_cover');
+          uploadedReelCover = {
+            type: reelCover.type,
+            storagePath: coverStoragePath,
+            timestamp: reelCover.timestamp,
+          };
+          toast.dismiss('cover-upload');
+        } catch (coverError) {
+          toast.dismiss('cover-upload');
+          console.error('Failed to upload cover:', coverError);
+          // Continue without cover - don't block the post
+        }
+      }
+
       // Create or update the post document
       const { PostsService } = await import('../../services/posts.service');
       const postsService = new PostsService(user.uid);
@@ -430,7 +505,7 @@ const PostComposer: React.FC<PostComposerProps> = ({
           media: uploadedMedia,
           scheduledTime: data.scheduledTime,
           firstComment: data.firstComment,
-          reelCover: data.postType === 'reel' ? reelCover || undefined : undefined,
+          reelCover: uploadedReelCover,
         });
         toast.success('Post updated successfully!');
       } else {
@@ -444,7 +519,7 @@ const PostComposer: React.FC<PostComposerProps> = ({
             scheduledTime: data.scheduledTime,
             publishMethod: 'auto',
             firstComment: data.firstComment,
-            reelCover: data.postType === 'reel' ? reelCover || undefined : undefined,
+            reelCover: uploadedReelCover,
           },
           account.igUserId
         );

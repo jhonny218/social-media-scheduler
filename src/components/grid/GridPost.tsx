@@ -12,8 +12,12 @@ import {
   Delete as DeleteIcon,
   DragIndicator as DragIcon,
 } from '@mui/icons-material';
-import { DraggableProvidedDragHandleProps } from '@hello-pangea/dnd';
 import { ScheduledPost } from '../../types';
+
+interface DragHandleProps {
+  onMouseDown: (e: React.MouseEvent) => void;
+  onTouchStart: (e: React.TouchEvent) => void;
+}
 
 interface GridPostProps {
   post: ScheduledPost;
@@ -21,7 +25,7 @@ interface GridPostProps {
   onEdit?: () => void;
   onDelete?: () => void;
   isDragging: boolean;
-  dragHandleProps?: DraggableProvidedDragHandleProps | null;
+  dragHandleProps?: DragHandleProps;
   paddingTop?: string;
 }
 
@@ -35,11 +39,17 @@ const GridPost: React.FC<GridPostProps> = ({
   paddingTop = '100%',
 }) => {
   const [isHovered, setIsHovered] = useState(false);
+  const [coverLoadError, setCoverLoadError] = useState(false);
 
-  const thumbnailUrl = post.media?.[0]?.thumbnailUrl || post.media?.[0]?.url;
+  // For reels, prefer the cover image; otherwise use media thumbnail
+  const mediaThumbnail = post.media?.[0]?.thumbnailUrl || post.media?.[0]?.url;
+  const thumbnailUrl = (post.postType === 'reel' && post.reelCover?.url && !coverLoadError)
+    ? post.reelCover.url
+    : mediaThumbnail;
   const isCarousel = post.postType === 'carousel' || (post.media?.length || 0) > 1;
   const isReel = post.postType === 'reel';
   const isInstagramPost = post.id.startsWith('ig_'); // Posts fetched from Instagram API
+  const isScheduledOrDraft = post.status === 'scheduled' || post.status === 'draft';
 
   const getPostTypeIcon = () => {
     if (isCarousel) return <CarouselIcon sx={{ fontSize: 20 }} />;
@@ -57,9 +67,8 @@ const GridPost: React.FC<GridPostProps> = ({
         cursor: 'pointer',
         opacity: isDragging ? 0.9 : 1,
         overflow: 'hidden',
-        transform: isDragging ? 'scale(1.05)' : 'scale(1)',
+        transform: isDragging ? 'scale(1.02)' : 'scale(1)',
         transition: 'transform 0.15s ease-out, opacity 0.15s ease-out',
-        boxShadow: isDragging ? '0 8px 24px rgba(0,0,0,0.25)' : 'none',
       }}
       onClick={onClick}
     >
@@ -79,6 +88,12 @@ const GridPost: React.FC<GridPostProps> = ({
             component="img"
             src={thumbnailUrl}
             alt={post.caption || 'Post thumbnail'}
+            onError={() => {
+              // If cover image fails to load, fallback to media thumbnail
+              if (post.postType === 'reel' && post.reelCover?.url && !coverLoadError) {
+                setCoverLoadError(true);
+              }
+            }}
             sx={{
               width: '100%',
               height: '100%',
@@ -118,26 +133,37 @@ const GridPost: React.FC<GridPostProps> = ({
         </Box>
       )}
 
-      {/* Drag Handle (top left, visible on hover) */}
-      {isHovered && !isDragging && dragHandleProps && post.status !== 'published' && (
+      {/* Drag Handle (top left, visible on hover for scheduled/draft posts) */}
+      {dragHandleProps && isScheduledOrDraft && (
         <Box
-          {...dragHandleProps}
+          onMouseDown={(e) => {
+            e.stopPropagation();
+            dragHandleProps.onMouseDown(e);
+          }}
+          onTouchStart={(e) => {
+            e.stopPropagation();
+            dragHandleProps.onTouchStart(e);
+          }}
+          onClick={(e) => e.stopPropagation()}
           sx={{
             position: 'absolute',
             top: 6,
             left: 6,
+            zIndex: 10,
             color: 'white',
             bgcolor: 'rgba(0, 0, 0, 0.5)',
             borderRadius: '4px',
             p: 0.25,
             display: 'flex',
             cursor: 'grab',
+            opacity: isHovered || isDragging ? 1 : 0,
+            pointerEvents: isHovered || isDragging ? 'auto' : 'none',
+            transition: 'opacity 0.15s ease-in-out',
             filter: 'drop-shadow(0 1px 2px rgba(0,0,0,0.3))',
             '&:active': {
               cursor: 'grabbing',
             },
           }}
-          onClick={(e: React.MouseEvent) => e.stopPropagation()}
         >
           <DragIcon sx={{ fontSize: 16 }} />
         </Box>
@@ -154,6 +180,7 @@ const GridPost: React.FC<GridPostProps> = ({
           bgcolor: 'rgba(0, 0, 0, 0.3)',
           color: 'white',
           opacity: isHovered && !isDragging ? 1 : 0,
+          pointerEvents: isHovered && !isDragging ? 'auto' : 'none',
           transition: 'opacity 0.15s ease-in-out',
           display: 'flex',
           alignItems: 'center',
@@ -161,7 +188,7 @@ const GridPost: React.FC<GridPostProps> = ({
         }}
       >
         {/* Quick Actions - centered */}
-        {(onEdit || onDelete) && !isInstagramPost && post.status !== 'published' && (
+        {(onEdit || onDelete) && !isInstagramPost && isScheduledOrDraft && (
           <Box
             sx={{
               display: 'flex',
