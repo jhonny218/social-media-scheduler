@@ -238,7 +238,7 @@ export const useInstagramMedia = (accountId?: string): UseInstagramMediaReturn =
     } else {
       setInstagramPosts([]);
     }
-  }, [account?.id]); // Only re-fetch when account ID changes
+  }, [account, refreshMedia]);
 
   // Auto-refresh every 30 minutes
   useEffect(() => {

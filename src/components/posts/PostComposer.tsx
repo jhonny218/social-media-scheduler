@@ -431,6 +431,7 @@ const PostComposer: React.FC<PostComposerProps> = ({
           uploadedMedia.push({
             id: file.mediaItem.id,
             url: file.mediaItem.downloadUrl,
+            storagePath: file.mediaItem.storagePath, // Store path for URL regeneration
             type: file.mediaItem.fileType,
             order: i,
           });
@@ -457,6 +458,7 @@ const PostComposer: React.FC<PostComposerProps> = ({
         uploadedMedia.push({
           id: mediaItem.id,
           url: mediaItem.downloadUrl,
+          storagePath: mediaItem.storagePath, // Store path for URL regeneration
           type: mediaItem.fileType,
           order: i,
         });

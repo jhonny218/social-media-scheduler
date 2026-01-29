@@ -71,6 +71,8 @@ export class AnalyticsService {
   }
 
   // Get analytics summary for a date range
+  // Note: This method returns post counts only. For engagement metrics,
+  // use getTopPerformingPosts() which fetches insights on-demand.
   async getAnalyticsSummary(startDate: Date, endDate: Date): Promise<AnalyticsSummary> {
     const { data, error } = await supabase
       .from(TABLES.SCHEDULED_POSTS)
@@ -86,38 +88,17 @@ export class AnalyticsService {
     const posts = (data || []).map(dbRowToPost);
     const publishedPosts = posts.filter((p) => p.status === 'published');
 
-    // Fetch insights for published posts
-    let totalImpressions = 0;
-    let totalReach = 0;
-    let totalEngagement = 0;
-
-    for (const post of publishedPosts) {
-      if (post.platformPostId) {
-        try {
-          const insights = await this.getPostInsights(post.id, post.platformPostId);
-          if (insights) {
-            totalImpressions += insights.impressions;
-            totalReach += insights.reach;
-            totalEngagement += insights.engagement;
-          }
-        } catch (error) {
-          console.error('Error fetching insights for post:', post.id, error);
-        }
-      }
-    }
-
-    const averageEngagementRate =
-      totalImpressions > 0 ? (totalEngagement / totalImpressions) * 100 : 0;
-
+    // Don't fetch insights for every post in summary - too many API calls
+    // Insights should be fetched on-demand for specific posts
     return {
       totalPosts: posts.length,
       publishedPosts: publishedPosts.length,
       scheduledPosts: posts.filter((p) => p.status === 'scheduled').length,
       failedPosts: posts.filter((p) => p.status === 'failed').length,
-      totalImpressions,
-      totalReach,
-      totalEngagement,
-      averageEngagementRate,
+      totalImpressions: 0,
+      totalReach: 0,
+      totalEngagement: 0,
+      averageEngagementRate: 0,
     };
   }
 
@@ -132,7 +113,24 @@ export class AnalyticsService {
         throw error;
       }
 
-      return data;
+      if (!data) return null;
+
+      const coerce = (value: unknown): number => {
+        const numeric = typeof value === 'number' ? value : Number(value);
+        if (!Number.isFinite(numeric) || Number.isNaN(numeric)) return 0;
+        return numeric;
+      };
+
+      return {
+        postId: data.postId ?? postId,
+        impressions: coerce(data.impressions),
+        reach: coerce(data.reach),
+        engagement: coerce(data.engagement),
+        likes: coerce(data.likes),
+        comments: coerce(data.comments),
+        saves: coerce(data.saves),
+        shares: coerce(data.shares),
+      };
     } catch (error) {
       console.error('Error fetching post insights:', error);
       return null;
@@ -264,7 +262,9 @@ export class AnalyticsService {
   }
 
   // Get posting patterns (best times to post)
-  async getPostingPatterns(): Promise<{ hour: number; dayOfWeek: number; avgEngagement: number }[]> {
+  // Note: Returns posting frequency by time slot. Engagement data would require
+  // storing insights in the database to avoid excessive API calls.
+  async getPostingPatterns(): Promise<{ hour: number; dayOfWeek: number; avgEngagement: number; postCount: number }[]> {
     const { data, error } = await supabase
       .from(TABLES.SCHEDULED_POSTS)
       .select('*')
@@ -276,7 +276,7 @@ export class AnalyticsService {
     }
 
     const posts = (data || []).map(dbRowToPost);
-    const patterns: Map<string, { total: number; count: number }> = new Map();
+    const patterns: Map<string, { count: number }> = new Map();
 
     for (const post of posts) {
       if (post.publishedAt) {
@@ -286,23 +286,11 @@ export class AnalyticsService {
         const key = `${dayOfWeek}-${hour}`;
 
         if (!patterns.has(key)) {
-          patterns.set(key, { total: 0, count: 0 });
+          patterns.set(key, { count: 0 });
         }
 
         const pattern = patterns.get(key)!;
         pattern.count++;
-
-        // Try to get engagement data
-        if (post.platformPostId) {
-          try {
-            const insights = await this.getPostInsights(post.id, post.platformPostId);
-            if (insights) {
-              pattern.total += insights.engagement;
-            }
-          } catch {
-            // Ignore errors for individual posts
-          }
-        }
       }
     }
 
@@ -311,7 +299,8 @@ export class AnalyticsService {
       return {
         hour,
         dayOfWeek,
-        avgEngagement: value.count > 0 ? value.total / value.count : 0,
+        avgEngagement: 0, // Would need cached insights data
+        postCount: value.count,
       };
     });
   }

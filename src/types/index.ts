@@ -54,10 +54,12 @@ export type PublishMethod = 'auto' | 'notification';
 
 export interface PostMedia {
   id: string;
-  url: string;
+  url: string; // Signed URL (populated when fetching, may expire)
+  storagePath?: string; // Storage path for regenerating signed URLs
   type: 'image' | 'video';
   order: number;
   thumbnailUrl?: string;
+  thumbnailStoragePath?: string; // Storage path for video thumbnails
 }
 
 // Reel cover type (stored in database)

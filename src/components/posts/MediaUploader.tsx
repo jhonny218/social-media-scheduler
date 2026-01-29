@@ -83,7 +83,6 @@ const MediaUploader: React.FC<MediaUploaderProps> = ({
   const [coverSelectorOpen, setCoverSelectorOpen] = useState(false);
 
   const isCarousel = maxFiles > 1;
-  const isReel = videoOnly;
 
   // Load media library
   useEffect(() => {

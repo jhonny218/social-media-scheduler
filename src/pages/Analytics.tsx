@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import {
   Box,
   Grid,
@@ -96,9 +96,11 @@ const Analytics: React.FC = () => {
   const [summary, setSummary] = useState<AnalyticsSummary | null>(null);
   const [loading, setLoading] = useState(true);
 
-  // Calculate date range
-  const endDate = endOfDay(new Date());
-  const startDate = startOfDay(subDays(new Date(), parseInt(dateRange)));
+  // Calculate date range - memoize to prevent infinite re-renders
+  const { startDate, endDate } = useMemo(() => ({
+    startDate: startOfDay(subDays(new Date(), parseInt(dateRange))),
+    endDate: endOfDay(new Date()),
+  }), [dateRange]);
 
   // Fetch posts for the date range
   const { posts, loading: postsLoading } = usePosts({
@@ -125,7 +127,7 @@ const Analytics: React.FC = () => {
     };
 
     loadAnalytics();
-  }, [user?.uid, dateRange, selectedAccount]);
+  }, [user?.uid, startDate, endDate]);
 
   // Get status counts
   const scheduledCount = posts.filter((p) => p.status === 'scheduled').length;
@@ -328,15 +330,24 @@ const Analytics: React.FC = () => {
                         ? (timestamp as { toDate: () => Date }).toDate()
                         : new Date(timestamp as string);
 
+                      // For reels, prefer reelCover, then video thumbnail, then first media
+                      const thumbnailUrl = post.postType === 'reel'
+                        ? (post.reelCover?.url || post.media?.[0]?.thumbnailUrl || post.media?.[0]?.url)
+                        : post.media?.[0]?.url;
+
                       return (
                         <TableRow key={post.id} hover>
                           <TableCell>
                             <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-                              {post.media?.[0]?.url && (
+                              {thumbnailUrl && (
                                 <Box
                                   component="img"
-                                  src={post.media[0].url}
+                                  src={thumbnailUrl}
                                   alt=""
+                                  onError={(e) => {
+                                    // Hide broken images
+                                    (e.target as HTMLImageElement).style.display = 'none';
+                                  }}
                                   sx={{
                                     width: 40,
                                     height: 40,

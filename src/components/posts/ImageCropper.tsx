@@ -46,23 +46,39 @@ const ImageCropper: React.FC<ImageCropperProps> = ({
   useEffect(() => {
     if (!containerRef.current) return;
 
-    const containerWidth = containerRef.current.clientWidth - 48; // Padding
     const containerHeight = 400;
+    const element = containerRef.current;
 
-    let cropWidth: number;
-    let cropHeight: number;
+    const updateCropArea = () => {
+      const containerWidth = element.clientWidth - 48; // Padding
 
-    if (containerWidth / containerHeight > aspectRatio) {
-      // Container is wider than aspect ratio
-      cropHeight = containerHeight * 0.8;
-      cropWidth = cropHeight * aspectRatio;
-    } else {
-      // Container is taller than aspect ratio
-      cropWidth = containerWidth * 0.8;
-      cropHeight = cropWidth / aspectRatio;
-    }
+      let cropWidth: number;
+      let cropHeight: number;
 
-    setCropAreaSize({ width: cropWidth, height: cropHeight });
+      if (containerWidth / containerHeight > aspectRatio) {
+        // Container is wider than aspect ratio
+        cropHeight = containerHeight * 0.8;
+        cropWidth = cropHeight * aspectRatio;
+      } else {
+        // Container is taller than aspect ratio
+        cropWidth = containerWidth * 0.8;
+        cropHeight = cropWidth / aspectRatio;
+      }
+
+      setCropAreaSize({ width: cropWidth, height: cropHeight });
+    };
+
+    const rafId = requestAnimationFrame(updateCropArea);
+    const resizeObserver = new ResizeObserver(() => {
+      requestAnimationFrame(updateCropArea);
+    });
+
+    resizeObserver.observe(element);
+
+    return () => {
+      cancelAnimationFrame(rafId);
+      resizeObserver.disconnect();
+    };
   }, [aspectRatio, open]);
 
   // Load image
@@ -231,7 +247,7 @@ const ImageCropper: React.FC<ImageCropperProps> = ({
           onTouchStart={handleMouseDown}
         >
           {/* Image */}
-          {imageLoaded && imageRef.current && (
+          {imageLoaded && (
             <Box
               component="img"
               src={imageSrc}

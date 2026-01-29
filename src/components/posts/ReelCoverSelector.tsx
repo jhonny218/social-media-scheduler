@@ -121,7 +121,7 @@ const ReelCoverSelector: React.FC<ReelCoverSelectorProps> = ({
         const time = (videoDuration / frameCount) * i;
 
         try {
-          await new Promise<void>((resolve, reject) => {
+          await new Promise<void>((resolve) => {
             const timeout = setTimeout(() => {
               resolve(); // Don't reject, just skip this frame
             }, 3000);
