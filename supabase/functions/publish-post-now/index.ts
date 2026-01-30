@@ -54,7 +54,7 @@ serve(async (req) => {
 
     // Get the post
     const { data: post, error: postError } = await supabaseAdmin
-      .from('scheduled_posts')
+      .from('sch_scheduled_posts')
       .select('*')
       .eq('id', postId)
       .eq('user_id', user.id)
@@ -94,7 +94,7 @@ serve(async (req) => {
 
     // Update status to publishing
     await supabaseAdmin
-      .from('scheduled_posts')
+      .from('sch_scheduled_posts')
       .update({ status: 'publishing', updated_at: new Date().toISOString() })
       .eq('id', postId);
 
@@ -228,7 +228,7 @@ serve(async (req) => {
 
       // Update post as published
       await supabaseAdmin
-        .from('scheduled_posts')
+        .from('sch_scheduled_posts')
         .update({
           status: 'published',
           platform_post_id: publishResult.id,
@@ -253,7 +253,7 @@ serve(async (req) => {
       const errorMessage = publishError instanceof Error ? publishError.message : 'Unknown error';
 
       await supabaseAdmin
-        .from('scheduled_posts')
+        .from('sch_scheduled_posts')
         .update({
           status: 'failed',
           error_message: errorMessage,

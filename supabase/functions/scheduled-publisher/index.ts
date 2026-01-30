@@ -87,7 +87,7 @@ async function publishPost(
   try {
     // Update status to publishing
     await supabaseAdmin
-      .from('scheduled_posts')
+      .from('sch_scheduled_posts')
       .update({ status: 'publishing', updated_at: new Date().toISOString() })
       .eq('id', post.id);
 
@@ -145,6 +145,11 @@ async function publishPost(
         containerIds,
         post.caption || undefined
       );
+
+      // Wait for carousel container to be ready
+      console.log('Waiting for carousel container to be ready...');
+      await waitForMediaReady(carouselContainer.id, account.access_token);
+      console.log('Carousel container ready, publishing...');
 
       // Publish carousel
       const result = await publishMedia(
@@ -228,7 +233,7 @@ async function publishPost(
 
     // Update post as published
     await supabaseAdmin
-      .from('scheduled_posts')
+      .from('sch_scheduled_posts')
       .update({
         status: 'published',
         platform_post_id: platformPostId,
@@ -245,7 +250,7 @@ async function publishPost(
 
     // Update post as failed
     await supabaseAdmin
-      .from('scheduled_posts')
+      .from('sch_scheduled_posts')
       .update({
         status: 'failed',
         error_message: errorMessage,
@@ -268,7 +273,7 @@ serve(async (req: Request) => {
     // Find posts that are due for publishing
     // Status is 'scheduled' and scheduled_time is in the past (or now)
     const { data: duePosts, error: fetchError } = await supabaseAdmin
-      .from('scheduled_posts')
+      .from('sch_scheduled_posts')
       .select('*')
       .eq('status', 'scheduled')
       .lte('scheduled_time', new Date().toISOString())
@@ -301,7 +306,7 @@ serve(async (req: Request) => {
       if (accountError || !account) {
         console.error(`Account not found for post ${post.id}`);
         await supabaseAdmin
-          .from('scheduled_posts')
+          .from('sch_scheduled_posts')
           .update({
             status: 'failed',
             error_message: 'Instagram account not found or disconnected',

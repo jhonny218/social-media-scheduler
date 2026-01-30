@@ -28,7 +28,7 @@ serve(async (req) => {
 
     // Get the post to find the account
     const { data: post, error: postError } = await supabaseAdmin
-      .from('scheduled_posts')
+      .from('sch_scheduled_posts')
       .select('account_id')
       .eq('id', postId)
       .eq('user_id', user.id)

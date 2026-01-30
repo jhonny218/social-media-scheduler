@@ -1,6 +1,7 @@
 // Instagram Graph API utilities
 
-const INSTAGRAM_GRAPH_API = 'https://graph.facebook.com/v18.0';
+const INSTAGRAM_GRAPH_API = 'https://graph.instagram.com/v24.0';
+const FACEBOOK_GRAPH_API = 'https://graph.facebook.com/v24.0';
 
 export interface InstagramAccount {
   id: string;
@@ -53,15 +54,31 @@ export async function createMediaContainer(
   }
   params.append('access_token', accessToken);
 
-  const response = await fetch(`${INSTAGRAM_GRAPH_API}/${igUserId}/media`, {
+  const url = `${INSTAGRAM_GRAPH_API}/${igUserId}/media`;
+  console.log('Creating media container at:', url);
+  console.log('Params:', params.toString());
+
+  const response = await fetch(url, {
     method: 'POST',
     body: params,
   });
 
-  const data = await response.json();
+  const responseText = await response.text();
+  console.log('Media container response:', responseText);
+
+  let data;
+  try {
+    data = JSON.parse(responseText);
+  } catch {
+    throw new Error(`Invalid response from Instagram: ${responseText}`);
+  }
 
   if (data.error) {
     throw new Error(data.error.message || 'Failed to create media container');
+  }
+
+  if (!data.id) {
+    throw new Error(`Media ID not returned. Response: ${JSON.stringify(data)}`);
   }
 
   return { id: data.id };
@@ -82,15 +99,31 @@ export async function createCarouselContainer(
   }
   params.append('access_token', accessToken);
 
-  const response = await fetch(`${INSTAGRAM_GRAPH_API}/${igUserId}/media`, {
+  const url = `${INSTAGRAM_GRAPH_API}/${igUserId}/media`;
+  console.log('Creating carousel container at:', url);
+  console.log('Children IDs:', childrenIds.join(','));
+
+  const response = await fetch(url, {
     method: 'POST',
     body: params,
   });
 
-  const data = await response.json();
+  const responseText = await response.text();
+  console.log('Carousel container response:', responseText);
+
+  let data;
+  try {
+    data = JSON.parse(responseText);
+  } catch {
+    throw new Error(`Invalid carousel response: ${responseText}`);
+  }
 
   if (data.error) {
     throw new Error(data.error.message || 'Failed to create carousel container');
+  }
+
+  if (!data.id) {
+    throw new Error(`Carousel ID not returned. Response: ${JSON.stringify(data)}`);
   }
 
   return { id: data.id };
@@ -101,11 +134,19 @@ export async function checkMediaStatus(
   containerId: string,
   accessToken: string
 ): Promise<{ status: string; statusCode?: string }> {
-  const response = await fetch(
-    `${INSTAGRAM_GRAPH_API}/${containerId}?fields=status_code&access_token=${accessToken}`
-  );
+  const url = `${INSTAGRAM_GRAPH_API}/${containerId}?fields=status_code&access_token=${accessToken}`;
+  console.log('Checking media status at:', url.replace(accessToken, '[TOKEN]'));
 
-  const data = await response.json();
+  const response = await fetch(url);
+  const responseText = await response.text();
+  console.log('Status check response:', responseText);
+
+  let data;
+  try {
+    data = JSON.parse(responseText);
+  } catch {
+    throw new Error(`Invalid status response: ${responseText}`);
+  }
 
   if (data.error) {
     throw new Error(data.error.message || 'Failed to check media status');
@@ -150,15 +191,31 @@ export async function publishMedia(
   params.append('creation_id', containerId);
   params.append('access_token', accessToken);
 
-  const response = await fetch(`${INSTAGRAM_GRAPH_API}/${igUserId}/media_publish`, {
+  const url = `${INSTAGRAM_GRAPH_API}/${igUserId}/media_publish`;
+  console.log('Publishing media at:', url);
+  console.log('Container ID:', containerId);
+
+  const response = await fetch(url, {
     method: 'POST',
     body: params,
   });
 
-  const data = await response.json();
+  const responseText = await response.text();
+  console.log('Publish response:', responseText);
+
+  let data;
+  try {
+    data = JSON.parse(responseText);
+  } catch {
+    throw new Error(`Invalid publish response: ${responseText}`);
+  }
 
   if (data.error) {
     throw new Error(data.error.message || 'Failed to publish media');
+  }
+
+  if (!data.id) {
+    throw new Error(`Published media ID not returned. Response: ${JSON.stringify(data)}`);
   }
 
   // Get permalink
