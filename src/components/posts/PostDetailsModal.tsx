@@ -357,7 +357,7 @@ const PostDetailsModal: React.FC<PostDetailsModalProps> = ({
             <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
               <ScheduleIcon fontSize="small" color="action" />
               <Typography variant="subtitle2" color="text.secondary">
-                {isPublished ? 'Published' : 'Scheduled'} For
+                {isPublished ? 'Published on' : 'Scheduled for'}
               </Typography>
             </Box>
             <Typography variant="body1" fontWeight={500}>
