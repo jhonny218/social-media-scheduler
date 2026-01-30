@@ -109,11 +109,13 @@ const AccountConnect: React.FC = () => {
     const code = sessionStorage.getItem('instagram_auth_code');
     if (!code) return;
 
+    // Remove the code immediately to prevent retries
+    sessionStorage.removeItem('instagram_auth_code');
+
     (async () => {
       try {
         await connectAccount(code);
         toast.success('Instagram account connected');
-        sessionStorage.removeItem('instagram_auth_code');
         try {
           const url = new URL(window.location.href);
           url.searchParams.delete('connected');
