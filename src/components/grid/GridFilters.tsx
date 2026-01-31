@@ -19,14 +19,23 @@ import {
   Movie as ReelIcon,
   Collections as CarouselIcon,
   GridView as GridIcon,
+  Instagram as InstagramIcon,
+  Facebook as FacebookIcon,
 } from '@mui/icons-material';
-import { InstagramAccount } from '../../types';
 
 export type GridViewMode = 'all' | 'reels';
 
+interface AccountOption {
+  id: string;
+  name: string;
+  username: string;
+  type: 'instagram' | 'facebook';
+  profilePictureUrl?: string;
+}
+
 interface GridFiltersProps {
   selectedAccount: string;
-  accounts: InstagramAccount[];
+  accounts: AccountOption[];
   onAccountChange: (accountId: string) => void;
   gridView: GridViewMode;
   onGridViewChange: (view: GridViewMode) => void;
@@ -65,23 +74,28 @@ const GridFilters: React.FC<GridFiltersProps> = ({
         {/* Left side filters */}
         <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 2, alignItems: 'center' }}>
           {/* Account Filter */}
-          <FormControl size="small" sx={{ minWidth: 200 }}>
-            <InputLabel>Instagram Account</InputLabel>
+          <FormControl size="small" sx={{ minWidth: 240 }}>
+            <InputLabel>Account</InputLabel>
             <Select
               value={selectedAccount}
-              label="Instagram Account"
+              label="Account"
               onChange={(e) => onAccountChange(e.target.value)}
             >
               {accounts.map((account) => (
                 <MenuItem key={account.id} value={account.id}>
                   <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                    {account.type === 'instagram' ? (
+                      <InstagramIcon sx={{ fontSize: 16, color: '#E4405F' }} />
+                    ) : (
+                      <FacebookIcon sx={{ fontSize: 16, color: '#1877F2' }} />
+                    )}
                     <Avatar
                       src={account.profilePictureUrl}
-                      sx={{ width: 24, height: 24 }}
+                      sx={{ width: 20, height: 20, fontSize: 10 }}
                     >
                       {account.username[0].toUpperCase()}
                     </Avatar>
-                    @{account.username}
+                    {account.name}
                   </Box>
                 </MenuItem>
               ))}

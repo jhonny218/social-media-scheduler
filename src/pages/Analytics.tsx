@@ -32,8 +32,10 @@ import {
 import { subDays, startOfDay, endOfDay, format } from 'date-fns';
 import { useAuth } from '../hooks/useAuth';
 import { useInstagram } from '../hooks/useInstagram';
+import { useFacebook } from '../hooks/useFacebook';
 import { usePosts } from '../hooks/usePosts';
 import { AnalyticsService, AnalyticsSummary } from '../services/analytics.service';
+import { Instagram as InstagramIcon, Facebook as FacebookIcon } from '@mui/icons-material';
 
 interface StatCardProps {
   title: string;
@@ -90,11 +92,18 @@ const StatCard: React.FC<StatCardProps> = ({
 
 const Analytics: React.FC = () => {
   const { user } = useAuth();
-  const { accounts } = useInstagram();
+  const { accounts: instagramAccounts } = useInstagram();
+  const { pages: facebookPages } = useFacebook();
   const [dateRange, setDateRange] = useState('30');
   const [selectedAccount, setSelectedAccount] = useState('all');
   const [summary, setSummary] = useState<AnalyticsSummary | null>(null);
   const [loading, setLoading] = useState(true);
+
+  // Combined accounts for filtering
+  const allAccounts = [
+    ...instagramAccounts.map(a => ({ id: a.id, name: `@${a.username}`, type: 'instagram' as const })),
+    ...facebookPages.map(p => ({ id: p.id, name: p.pageName, type: 'facebook' as const })),
+  ];
 
   // Calculate date range - memoize to prevent infinite re-renders
   const { startDate, endDate } = useMemo(() => ({
@@ -141,7 +150,13 @@ const Analytics: React.FC = () => {
     .slice(0, 5);
 
   // Get account for post
-  const getAccount = (accountId: string) => accounts.find((a) => a.id === accountId);
+  const getAccount = (accountId: string) => {
+    const igAccount = instagramAccounts.find((a) => a.id === accountId);
+    if (igAccount) return { ...igAccount, type: 'instagram' as const };
+    const fbPage = facebookPages.find((p) => p.id === accountId);
+    if (fbPage) return { username: fbPage.pageName, type: 'facebook' as const, ...fbPage };
+    return undefined;
+  };
 
   return (
     <Box>
@@ -161,7 +176,7 @@ const Analytics: React.FC = () => {
             Analytics
           </Typography>
           <Typography variant="body1" color="text.secondary">
-            Track your Instagram performance and posting activity
+            Track your social media performance and posting activity
           </Typography>
         </Box>
 
@@ -188,9 +203,10 @@ const Analytics: React.FC = () => {
               onChange={(e) => setSelectedAccount(e.target.value)}
             >
               <MenuItem value="all">All Accounts</MenuItem>
-              {accounts.map((account) => (
+              {allAccounts.map((account) => (
                 <MenuItem key={account.id} value={account.id}>
-                  @{account.username}
+                  {account.type === 'instagram' ? <InstagramIcon sx={{ fontSize: 16, mr: 1, verticalAlign: 'middle' }} /> : <FacebookIcon sx={{ fontSize: 16, mr: 1, verticalAlign: 'middle' }} />}
+                  {account.name}
                 </MenuItem>
               ))}
             </Select>
@@ -420,7 +436,7 @@ const Analytics: React.FC = () => {
               Connected Accounts
             </Typography>
 
-            {accounts.length === 0 ? (
+            {allAccounts.length === 0 ? (
               <Box
                 sx={{
                   textAlign: 'center',
@@ -435,7 +451,8 @@ const Analytics: React.FC = () => {
               </Box>
             ) : (
               <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-                {accounts.map((account) => {
+                {/* Instagram Accounts */}
+                {instagramAccounts.map((account) => {
                   const accountPosts = posts.filter((p) => p.accountId === account.id);
                   const publishedPosts = accountPosts.filter((p) => p.status === 'published');
 
@@ -490,6 +507,69 @@ const Analytics: React.FC = () => {
                             </Typography>
                             <Typography fontWeight={600} color="info.main">
                               {accountPosts.filter((p) => p.status === 'scheduled').length}
+                            </Typography>
+                          </Grid>
+                        </Grid>
+                      </CardContent>
+                    </Card>
+                  );
+                })}
+                {/* Facebook Pages */}
+                {facebookPages.map((page) => {
+                  const pagePosts = posts.filter((p) => p.accountId === page.id);
+                  const publishedPosts = pagePosts.filter((p) => p.status === 'published');
+
+                  return (
+                    <Card key={page.id} variant="outlined">
+                      <CardContent>
+                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 2 }}>
+                          <Avatar
+                            src={page.profilePictureUrl}
+                            sx={{
+                              backgroundColor: '#1877F2',
+                            }}
+                          >
+                            <FacebookIcon />
+                          </Avatar>
+                          <Box>
+                            <Typography fontWeight={600}>{page.pageName}</Typography>
+                            <Typography variant="caption" color="text.secondary">
+                              Facebook Page
+                            </Typography>
+                          </Box>
+                        </Box>
+
+                        <Grid container spacing={1}>
+                          <Grid size={6}>
+                            <Typography variant="caption" color="text.secondary">
+                              Fans
+                            </Typography>
+                            <Typography fontWeight={600}>
+                              {page.fanCount.toLocaleString()}
+                            </Typography>
+                          </Grid>
+                          <Grid size={6}>
+                            <Typography variant="caption" color="text.secondary">
+                              Posts ({dateRange}d)
+                            </Typography>
+                            <Typography fontWeight={600}>
+                              {pagePosts.length}
+                            </Typography>
+                          </Grid>
+                          <Grid size={6}>
+                            <Typography variant="caption" color="text.secondary">
+                              Published
+                            </Typography>
+                            <Typography fontWeight={600} color="success.main">
+                              {publishedPosts.length}
+                            </Typography>
+                          </Grid>
+                          <Grid size={6}>
+                            <Typography variant="caption" color="text.secondary">
+                              Scheduled
+                            </Typography>
+                            <Typography fontWeight={600} color="info.main">
+                              {pagePosts.filter((p) => p.status === 'scheduled').length}
                             </Typography>
                           </Grid>
                         </Grid>

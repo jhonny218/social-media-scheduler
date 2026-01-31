@@ -21,8 +21,8 @@ export const TABLES = {
   // Instagram tables
   IG_ACCOUNTS: 'ig_accounts',
 
-  // Future: Facebook tables
-  // FB_ACCOUNTS: 'fb_accounts',
+  // Facebook tables
+  FB_PAGES: 'fb_pages',
 
   // Future: Pinterest tables
   // PIN_ACCOUNTS: 'pin_accounts',

@@ -169,7 +169,7 @@ const MainLayout: React.FC = () => {
   );
 };
 
-// OAuth Callback page
+// OAuth Callback page for Instagram
 const OAuthCallback: React.FC = () => {
   const location = useLocation();
   const searchParams = new URLSearchParams(location.search);
@@ -200,6 +200,37 @@ const OAuthCallback: React.FC = () => {
   );
 };
 
+// OAuth Callback page for Facebook
+const FacebookOAuthCallback: React.FC = () => {
+  const location = useLocation();
+  const searchParams = new URLSearchParams(location.search);
+  const code = searchParams.get('code');
+  const error = searchParams.get('error');
+
+  React.useEffect(() => {
+    if (code) {
+      // Store the code and redirect to settings (Facebook tab = index 2)
+      sessionStorage.setItem('facebook_auth_code', code);
+      window.location.href = '/settings?tab=2&connected=true';
+    } else if (error) {
+      window.location.href = '/settings?tab=2&error=' + encodeURIComponent(error);
+    }
+  }, [code, error]);
+
+  return (
+    <Box
+      sx={{
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        minHeight: '100vh',
+      }}
+    >
+      <CircularProgress />
+    </Box>
+  );
+};
+
 // App component
 const App: React.FC = () => {
   return (
@@ -213,6 +244,7 @@ const App: React.FC = () => {
               <Route path="/login" element={<Login />} />
               <Route path="/signup" element={<Signup />} />
               <Route path="/oauth/callback" element={<OAuthCallback />} />
+              <Route path="/oauth/facebook/callback" element={<FacebookOAuthCallback />} />
 
               {/* Protected routes */}
               <Route element={<ProtectedRoute />}>

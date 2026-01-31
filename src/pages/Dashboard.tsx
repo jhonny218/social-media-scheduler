@@ -16,13 +16,16 @@ import {
   CheckCircle as PublishedIcon,
   Error as FailedIcon,
   Instagram as InstagramIcon,
+  Facebook as FacebookIcon,
   Add as AddIcon,
   CalendarMonth as CalendarIcon,
+  Link as LinkIcon,
 } from '@mui/icons-material';
 import { useNavigate } from 'react-router-dom';
 import { startOfWeek, endOfWeek } from 'date-fns';
 import { useAuth } from '../hooks/useAuth';
 import { useInstagram } from '../hooks/useInstagram';
+import { useFacebook } from '../hooks/useFacebook';
 import { usePosts } from '../hooks/usePosts';
 import PostCard from '../components/posts/PostCard';
 import PostComposer from '../components/posts/PostComposer';
@@ -75,8 +78,13 @@ const StatCard: React.FC<StatCardProps> = ({ title, value, icon, color, loading 
 const Dashboard: React.FC = () => {
   const navigate = useNavigate();
   const { user } = useAuth();
-  const { accounts, loading: accountsLoading } = useInstagram();
+  const { accounts: instagramAccounts, loading: instagramLoading } = useInstagram();
+  const { pages: facebookPages, loading: facebookLoading } = useFacebook();
   const [composerOpen, setComposerOpen] = useState(false);
+
+  // Combined accounts count
+  const totalAccounts = instagramAccounts.length + facebookPages.length;
+  const accountsLoading = instagramLoading || facebookLoading;
 
   // Get current week range for posts
   const now = new Date();
@@ -100,7 +108,11 @@ const Dashboard: React.FC = () => {
 
   // Get account username for a post
   const getAccountUsername = (accountId: string): string | undefined => {
-    return accounts.find((a) => a.id === accountId)?.username;
+    const igAccount = instagramAccounts.find((a) => a.id === accountId);
+    if (igAccount) return igAccount.username;
+    const fbPage = facebookPages.find((p) => p.id === accountId);
+    if (fbPage) return fbPage.pageName;
+    return undefined;
   };
 
   return (
@@ -111,7 +123,7 @@ const Dashboard: React.FC = () => {
           Welcome back, {user?.displayName?.split(' ')[0]}!
         </Typography>
         <Typography variant="body1" color="text.secondary">
-          Here's an overview of your Instagram scheduling activity this week.
+          Here's an overview of your social media scheduling activity this week.
         </Typography>
       </Box>
 
@@ -147,8 +159,8 @@ const Dashboard: React.FC = () => {
         <Grid size={{ xs: 12, sm: 6, md: 3 }}>
           <StatCard
             title="Connected Accounts"
-            value={accounts.length}
-            icon={<InstagramIcon />}
+            value={totalAccounts}
+            icon={<LinkIcon />}
             color="#8b5cf6"
             loading={accountsLoading}
           />
@@ -263,13 +275,14 @@ const Dashboard: React.FC = () => {
       </Grid>
 
       {/* Connected Accounts Overview */}
-      {accounts.length > 0 && (
+      {totalAccounts > 0 && (
         <Paper sx={{ p: 3, mt: 3 }}>
           <Typography variant="h6" fontWeight={600} gutterBottom>
             Connected Accounts
           </Typography>
           <Grid container spacing={2}>
-            {accounts.map((account) => (
+            {/* Instagram Accounts */}
+            {instagramAccounts.map((account) => (
               <Grid key={account.id} size={{ xs: 12, sm: 6, md: 4 }}>
                 <Card variant="outlined">
                   <CardContent>
@@ -295,6 +308,39 @@ const Dashboard: React.FC = () => {
                         size="small"
                         variant="outlined"
                         sx={{ textTransform: 'capitalize' }}
+                      />
+                    </Box>
+                  </CardContent>
+                </Card>
+              </Grid>
+            ))}
+            {/* Facebook Pages */}
+            {facebookPages.map((page) => (
+              <Grid key={page.id} size={{ xs: 12, sm: 6, md: 4 }}>
+                <Card variant="outlined">
+                  <CardContent>
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+                      <Avatar
+                        src={page.profilePictureUrl}
+                        sx={{
+                          width: 48,
+                          height: 48,
+                          backgroundColor: '#1877F2',
+                        }}
+                      >
+                        <FacebookIcon />
+                      </Avatar>
+                      <Box sx={{ flexGrow: 1 }}>
+                        <Typography fontWeight={600}>{page.pageName}</Typography>
+                        <Typography variant="body2" color="text.secondary">
+                          {page.fanCount.toLocaleString()} fans
+                        </Typography>
+                      </Box>
+                      <Chip
+                        label="Facebook"
+                        size="small"
+                        variant="outlined"
+                        sx={{ color: '#1877F2', borderColor: '#1877F2' }}
                       />
                     </Box>
                   </CardContent>

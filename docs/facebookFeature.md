@@ -5,7 +5,7 @@
 This document outlines the implementation plan for adding Facebook Pages management to the Social Media Scheduler application. The feature will mirror the existing Instagram functionality, allowing users to connect their Facebook Pages, schedule posts, and publish content directly to Facebook.
 
 **Estimated Complexity:** Medium-High
-**Dependencies:** Facebook Graph API v18.0, Existing OAuth infrastructure
+**Dependencies:** Facebook Graph API v24.0, Existing OAuth infrastructure
 **Parallel to:** Instagram implementation patterns
 
 ---
@@ -231,7 +231,7 @@ Create `/supabase/functions/_shared/facebook.ts`:
 ```typescript
 // Facebook Graph API utilities
 
-const FACEBOOK_GRAPH_API = 'https://graph.facebook.com/v18.0';
+const FACEBOOK_GRAPH_API = 'https://graph.facebook.com/v24.0';
 
 export interface FacebookPage {
   id: string;
@@ -629,7 +629,7 @@ serve(async (req: Request) => {
 
     // Exchange code for user access token
     const tokenResponse = await fetch(
-      `https://graph.facebook.com/v18.0/oauth/access_token?` +
+      `https://graph.facebook.com/v24.0/oauth/access_token?` +
       `client_id=${appId}&` +
       `client_secret=${appSecret}&` +
       `redirect_uri=${encodeURIComponent(redirectUri)}&` +
@@ -1065,7 +1065,7 @@ export const useFacebook = (): UseFacebookReturn => {
       'read_insights',
     ].join(',');
 
-    return `https://www.facebook.com/v18.0/dialog/oauth?` +
+    return `https://www.facebook.com/v24.0/dialog/oauth?` +
       `client_id=${appId}&` +
       `redirect_uri=${encodeURIComponent(redirectUri)}&` +
       `scope=${scopes}&` +
@@ -1716,7 +1716,7 @@ FACEBOOK_APP_SECRET=your_app_secret
 
 ### 10.3 Dependencies
 
-- Facebook Graph API v18.0 stability
+- Facebook Graph API v24.0 stability
 - Meta Business Verification approval
 - App Review for production permissions
 - Existing Instagram OAuth app (shared)

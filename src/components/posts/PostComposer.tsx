@@ -31,6 +31,8 @@ import {
   Movie as ReelIcon,
   Collections as CarouselIcon,
   PhotoCamera as StoryIcon,
+  Instagram as InstagramIcon,
+  Facebook as FacebookIcon,
 } from '@mui/icons-material';
 import { useForm, Controller } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -40,14 +42,17 @@ import toast from 'react-hot-toast';
 import MediaUploader, { UploadedFile } from './MediaUploader';
 import { useAuth } from '../../hooks/useAuth';
 import { useInstagram } from '../../hooks/useInstagram';
+import { useFacebook } from '../../hooks/useFacebook';
 import { MediaService } from '../../services/media.service';
-import { PLATFORMS } from '../../config/supabase';
+import { Platform } from '../../config/supabase';
 import { instagramService } from '../../services/instagram.service';
-import { PostMedia } from '../../types';
+import { PostMedia, FacebookPostType } from '../../types';
 
 const postSchema = z.object({
-  accountId: z.string().min(1, 'Please select an Instagram account'),
-  postType: z.enum(['feed', 'story', 'reel', 'carousel']),
+  platform: z.enum(['instagram', 'facebook']),
+  accountId: z.string().min(1, 'Please select an account'),
+  postType: z.enum(['feed', 'story', 'reel', 'carousel', 'pin', 'video']),
+  fbPostType: z.enum(['photo', 'video', 'link', 'album', 'reel']).optional(),
   caption: z.string().max(2200, 'Caption cannot exceed 2200 characters').optional(),
   firstComment: z.string().max(2200, 'Comment cannot exceed 2200 characters').optional(),
   scheduledTime: z.date().refine(
@@ -77,7 +82,8 @@ const PostComposer: React.FC<PostComposerProps> = ({
 }) => {
   const isEditing = !!editPostId;
   const { user } = useAuth();
-  const { accounts, loading: accountsLoading } = useInstagram();
+  const { accounts: instagramAccounts, loading: instagramLoading } = useInstagram();
+  const { pages: facebookPages, loading: facebookLoading } = useFacebook();
   const [files, setFiles] = useState<UploadedFile[]>([]);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [aiLoading, setAiLoading] = useState(false);
@@ -97,8 +103,10 @@ const PostComposer: React.FC<PostComposerProps> = ({
   } = useForm<PostFormData>({
     resolver: zodResolver(postSchema),
     defaultValues: {
+      platform: 'instagram',
       accountId: '',
       postType: 'feed',
+      fbPostType: undefined,
       caption: '',
       firstComment: '',
       scheduledTime: addMinutes(new Date(), 30),
@@ -106,9 +114,14 @@ const PostComposer: React.FC<PostComposerProps> = ({
     },
   });
 
+  const platform = watch('platform');
   const postType = watch('postType');
   const caption = watch('caption');
   const accountId = watch('accountId');
+
+  // Derived state for accounts based on platform
+  const accounts = platform === 'facebook' ? facebookPages : instagramAccounts;
+  const accountsLoading = platform === 'facebook' ? facebookLoading : instagramLoading;
 
   const buildDefaultValues = (data?: Partial<PostFormData>): PostFormData => {
     const scheduled =
@@ -119,13 +132,22 @@ const PostComposer: React.FC<PostComposerProps> = ({
           : addMinutes(new Date(), 30);
 
     return {
+      platform: (data?.platform as 'instagram' | 'facebook') ?? 'instagram',
       accountId: data?.accountId ?? '',
       postType: data?.postType ?? 'feed',
+      fbPostType: data?.fbPostType,
       caption: data?.caption ?? '',
       firstComment: data?.firstComment ?? '',
       scheduledTime: scheduled,
     };
   };
+
+  // Reset account selection when platform changes
+  useEffect(() => {
+    setValue('accountId', '');
+    // Reset post type to feed for both platforms
+    setValue('postType', 'feed');
+  }, [platform, setValue]);
 
   // Reset form when dialog closes
   useEffect(() => {
@@ -176,7 +198,7 @@ const PostComposer: React.FC<PostComposerProps> = ({
     if (accounts.length > 0 && !accountId) {
       setValue('accountId', accounts[0].id);
     }
-  }, [accounts, accountId, setValue]);
+  }, [accounts, accountId, setValue, platform]);
 
   // Determine available post types based on uploaded files
   const getAvailablePostTypes = (fileList: UploadedFile[]) => {
@@ -470,15 +492,15 @@ const PostComposer: React.FC<PostComposerProps> = ({
         );
       }
 
-      // Get Instagram account details
+      // Get account details based on platform
       const account = accounts.find((a) => a.id === data.accountId);
       if (!account) {
         throw new Error('Selected account not found');
       }
 
-      // Upload reel cover if present
+      // Upload reel cover if present (Instagram only)
       let uploadedReelCover: { type: 'frame' | 'custom'; storagePath: string; timestamp?: number } | undefined;
-      if (data.postType === 'reel' && reelCover?.data) {
+      if (data.platform === 'instagram' && data.postType === 'reel' && reelCover?.data) {
         try {
           toast.loading('Uploading cover image...', { id: 'cover-upload' });
           const coverStoragePath = await mediaService.uploadBase64Image(reelCover.data, 'reel_cover');
@@ -495,35 +517,54 @@ const PostComposer: React.FC<PostComposerProps> = ({
         }
       }
 
+      // Determine Facebook post type based on media
+      let fbPostType: FacebookPostType | undefined;
+      if (data.platform === 'facebook') {
+        if (uploadedMedia.length === 0) {
+          fbPostType = 'link';
+        } else if (uploadedMedia.length > 1) {
+          fbPostType = 'album';
+        } else {
+          fbPostType = uploadedMedia[0].type === 'video' ? 'video' : 'photo';
+        }
+      }
+
       // Create or update the post document
       const { PostsService } = await import('../../services/posts.service');
       const postsService = new PostsService(user.uid);
+
+      // Get platform user ID
+      const platformUserId = data.platform === 'facebook'
+        ? (account as typeof facebookPages[0]).pageId
+        : (account as typeof instagramAccounts[0]).igUserId;
 
       if (isEditing && editPostId) {
         await postsService.updatePost(editPostId, {
           accountId: data.accountId,
           postType: data.postType,
+          fbPostType,
           caption: data.caption,
           media: uploadedMedia,
           scheduledTime: data.scheduledTime,
-          firstComment: data.firstComment,
+          firstComment: data.platform === 'instagram' ? data.firstComment : undefined,
           reelCover: uploadedReelCover,
         });
         toast.success('Post updated successfully!');
       } else {
         await postsService.createPost(
           {
-            platform: PLATFORMS.INSTAGRAM,
+            platform: data.platform as Platform,
             accountId: data.accountId,
             postType: data.postType,
+            fbPostType,
             caption: data.caption,
             media: uploadedMedia,
             scheduledTime: data.scheduledTime,
             publishMethod: 'auto',
-            firstComment: data.firstComment,
+            firstComment: data.platform === 'instagram' ? data.firstComment : undefined,
             reelCover: uploadedReelCover,
           },
-          account.igUserId
+          platformUserId
         );
         toast.success('Post scheduled successfully!');
       }
@@ -576,20 +617,77 @@ const PostComposer: React.FC<PostComposerProps> = ({
               </Alert>
             )}
 
+            {/* Platform Selection */}
+            <Box sx={{ mb: 3 }}>
+              <Typography variant="subtitle2" sx={{ mb: 1 }}>
+                Platform
+              </Typography>
+              <Controller
+                name="platform"
+                control={control}
+                render={({ field }) => (
+                  <ToggleButtonGroup
+                    {...field}
+                    exclusive
+                    onChange={(_, value) => value && field.onChange(value)}
+                  >
+                    <ToggleButton
+                      value="instagram"
+                      sx={{
+                        px: 3,
+                        '&.Mui-selected': {
+                          background: 'linear-gradient(45deg, #405DE6, #833AB4, #C13584)',
+                          color: 'white',
+                          '&:hover': {
+                            background: 'linear-gradient(45deg, #3651c9, #722d9c, #a62d71)',
+                          },
+                        },
+                      }}
+                    >
+                      <InstagramIcon sx={{ mr: 1 }} />
+                      Instagram
+                    </ToggleButton>
+                    <ToggleButton
+                      value="facebook"
+                      sx={{
+                        px: 3,
+                        '&.Mui-selected': {
+                          backgroundColor: '#1877F2',
+                          color: 'white',
+                          '&:hover': {
+                            backgroundColor: '#166FE5',
+                          },
+                        },
+                      }}
+                    >
+                      <FacebookIcon sx={{ mr: 1 }} />
+                      Facebook
+                    </ToggleButton>
+                  </ToggleButtonGroup>
+                )}
+              />
+            </Box>
+
             {/* Account Selection */}
             <Controller
               name="accountId"
               control={control}
               render={({ field }) => (
                 <FormControl fullWidth sx={{ mb: 3 }} error={!!errors.accountId}>
-                  <InputLabel>Instagram Account</InputLabel>
-                  <Select {...field} label="Instagram Account">
+                  <InputLabel>{platform === 'facebook' ? 'Facebook Page' : 'Instagram Account'}</InputLabel>
+                  <Select {...field} label={platform === 'facebook' ? 'Facebook Page' : 'Instagram Account'}>
                     {accountsLoading ? (
                       <MenuItem disabled>Loading accounts...</MenuItem>
                     ) : accounts.length === 0 ? (
                       <MenuItem disabled>No accounts connected</MenuItem>
+                    ) : platform === 'facebook' ? (
+                      facebookPages.map((page) => (
+                        <MenuItem key={page.id} value={page.id}>
+                          {page.pageName}
+                        </MenuItem>
+                      ))
                     ) : (
-                      accounts.map((account) => (
+                      instagramAccounts.map((account) => (
                         <MenuItem key={account.id} value={account.id}>
                           @{account.username}
                         </MenuItem>
@@ -620,25 +718,49 @@ const PostComposer: React.FC<PostComposerProps> = ({
                     onChange={(_, value) => value && field.onChange(value)}
                     sx={{ flexWrap: 'wrap', gap: 1 }}
                   >
-                    <ToggleButton value="feed" sx={{ px: 3 }} disabled={!availablePostTypes.feed}>
-                      <ImageIcon sx={{ mr: 1 }} />
-                      Feed
-                    </ToggleButton>
-                    <ToggleButton value="story" sx={{ px: 3 }} disabled={!availablePostTypes.story}>
-                      <StoryIcon sx={{ mr: 1 }} />
-                      Story
-                    </ToggleButton>
-                    <ToggleButton value="reel" sx={{ px: 3 }} disabled={!availablePostTypes.reel}>
-                      <ReelIcon sx={{ mr: 1 }} />
-                      Reel
-                    </ToggleButton>
-                    <ToggleButton value="carousel" sx={{ px: 3 }} disabled={!availablePostTypes.carousel}>
-                      <CarouselIcon sx={{ mr: 1 }} />
-                      Carousel
-                    </ToggleButton>
+                    {platform === 'instagram' ? (
+                      <>
+                        <ToggleButton value="feed" sx={{ px: 3 }} disabled={!availablePostTypes.feed}>
+                          <ImageIcon sx={{ mr: 1 }} />
+                          Feed
+                        </ToggleButton>
+                        <ToggleButton value="story" sx={{ px: 3 }} disabled={!availablePostTypes.story}>
+                          <StoryIcon sx={{ mr: 1 }} />
+                          Story
+                        </ToggleButton>
+                        <ToggleButton value="reel" sx={{ px: 3 }} disabled={!availablePostTypes.reel}>
+                          <ReelIcon sx={{ mr: 1 }} />
+                          Reel
+                        </ToggleButton>
+                        <ToggleButton value="carousel" sx={{ px: 3 }} disabled={!availablePostTypes.carousel}>
+                          <CarouselIcon sx={{ mr: 1 }} />
+                          Carousel
+                        </ToggleButton>
+                      </>
+                    ) : (
+                      <>
+                        <ToggleButton value="feed" sx={{ px: 3 }}>
+                          <ImageIcon sx={{ mr: 1 }} />
+                          Photo
+                        </ToggleButton>
+                        <ToggleButton value="video" sx={{ px: 3 }}>
+                          <ReelIcon sx={{ mr: 1 }} />
+                          Video
+                        </ToggleButton>
+                        <ToggleButton value="carousel" sx={{ px: 3 }}>
+                          <CarouselIcon sx={{ mr: 1 }} />
+                          Album
+                        </ToggleButton>
+                      </>
+                    )}
                   </ToggleButtonGroup>
                 )}
               />
+              {platform === 'facebook' && (
+                <Typography variant="caption" color="text.secondary" sx={{ mt: 1, display: 'block' }}>
+                  Post type is auto-detected based on media. Select the primary content type.
+                </Typography>
+              )}
             </Box>
 
             {/* Media Upload */}
@@ -733,38 +855,40 @@ const PostComposer: React.FC<PostComposerProps> = ({
               />
             </Box>
 
-            {/* First Comment (Hashtags) */}
-            <Box sx={{ mb: 3 }}>
-              <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1 }}>
-                <Typography variant="subtitle2">First Comment (Hashtags)</Typography>
-                <Tooltip title="Generate Hashtags">
-                  <Button
-                    size="small"
-                    variant="outlined"
-                    onClick={handleGenerateHashtags}
-                    disabled={hashtagLoading || !caption}
-                    startIcon={hashtagLoading ? <CircularProgress size={16} /> : <HashtagIcon />}
-                  >
-                    Generate
-                  </Button>
-                </Tooltip>
+            {/* First Comment (Hashtags) - Instagram only */}
+            {platform === 'instagram' && (
+              <Box sx={{ mb: 3 }}>
+                <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1 }}>
+                  <Typography variant="subtitle2">First Comment (Hashtags)</Typography>
+                  <Tooltip title="Generate Hashtags">
+                    <Button
+                      size="small"
+                      variant="outlined"
+                      onClick={handleGenerateHashtags}
+                      disabled={hashtagLoading || !caption}
+                      startIcon={hashtagLoading ? <CircularProgress size={16} /> : <HashtagIcon />}
+                    >
+                      Generate
+                    </Button>
+                  </Tooltip>
+                </Box>
+                <Controller
+                  name="firstComment"
+                  control={control}
+                  render={({ field }) => (
+                    <TextField
+                      {...field}
+                      multiline
+                      rows={2}
+                      fullWidth
+                      placeholder="#hashtag1 #hashtag2 #hashtag3"
+                      error={!!errors.firstComment}
+                      helperText={errors.firstComment?.message}
+                    />
+                  )}
+                />
               </Box>
-              <Controller
-                name="firstComment"
-                control={control}
-                render={({ field }) => (
-                  <TextField
-                    {...field}
-                    multiline
-                    rows={2}
-                    fullWidth
-                    placeholder="#hashtag1 #hashtag2 #hashtag3"
-                    error={!!errors.firstComment}
-                    helperText={errors.firstComment?.message}
-                  />
-                )}
-              />
-            </Box>
+            )}
 
             {/* Schedule Time */}
             <Box sx={{ mb: 2 }}>
@@ -801,12 +925,21 @@ const PostComposer: React.FC<PostComposerProps> = ({
               type="submit"
               variant="contained"
               disabled={isSubmitting || accounts.length === 0}
-              sx={{
-                background: 'linear-gradient(45deg, #405DE6, #833AB4, #C13584)',
-                '&:hover': {
-                  background: 'linear-gradient(45deg, #3651c9, #722d9c, #a62d71)',
-                },
-              }}
+              sx={
+                platform === 'facebook'
+                  ? {
+                      backgroundColor: '#1877F2',
+                      '&:hover': {
+                        backgroundColor: '#166FE5',
+                      },
+                    }
+                  : {
+                      background: 'linear-gradient(45deg, #405DE6, #833AB4, #C13584)',
+                      '&:hover': {
+                        background: 'linear-gradient(45deg, #3651c9, #722d9c, #a62d71)',
+                      },
+                    }
+              }
             >
               {isSubmitting ? (
                 <>

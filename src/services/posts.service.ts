@@ -11,6 +11,7 @@ const dbRowToPost = (row: any): ScheduledPost => ({
   accountId: row.account_id,
   platformUserId: row.platform_user_id,
   postType: row.post_type as ScheduledPost['postType'],
+  fbPostType: row.fb_post_type || undefined,
   caption: row.caption || undefined,
   media: (row.media as PostMedia[]) || [],
   reelCover: row.reel_cover || undefined,
@@ -198,6 +199,7 @@ export class PostsService {
       account_id: input.accountId,
       platform_user_id: platformUserId,
       post_type: input.postType,
+      fb_post_type: input.fbPostType || null,
       caption: input.caption || null,
       media: input.media,
       scheduled_time: input.scheduledTime.toISOString(),
@@ -239,6 +241,7 @@ export class PostsService {
     if (updates.status) updateData.status = updates.status;
     if (updates.firstComment !== undefined) updateData.first_comment = updates.firstComment;
     if (updates.postType) updateData.post_type = updates.postType;
+    if (updates.fbPostType !== undefined) updateData.fb_post_type = updates.fbPostType;
     if (updates.reelCover !== undefined) updateData.reel_cover = updates.reelCover;
 
     const { error } = await supabase

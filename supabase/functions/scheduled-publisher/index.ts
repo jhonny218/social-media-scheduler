@@ -9,6 +9,12 @@ import {
   publishMedia,
   postComment,
 } from '../_shared/instagram.ts';
+import {
+  createPhotoPost,
+  createVideoPost,
+  createLinkPost,
+  createAlbumPost,
+} from '../_shared/facebook.ts';
 
 const STORAGE_BUCKET = 'media';
 const SIGNED_URL_EXPIRY = 3600; // 1 hour
@@ -33,9 +39,11 @@ interface ReelCover {
 interface ScheduledPost {
   id: string;
   user_id: string;
+  platform: 'instagram' | 'facebook';
   account_id: string;
   platform_user_id: string;
   post_type: 'feed' | 'reel' | 'carousel';
+  fb_post_type?: 'photo' | 'video' | 'link' | 'album';
   caption: string | null;
   media: PostMedia[];
   reel_cover?: ReelCover;
@@ -47,6 +55,12 @@ interface InstagramAccount {
   id: string;
   ig_user_id: string;
   access_token: string;
+}
+
+interface FacebookPage {
+  id: string;
+  page_id: string;
+  page_access_token: string;
 }
 
 interface SignedUrlEntry {
@@ -262,6 +276,120 @@ async function publishPost(
   }
 }
 
+// Publish a Facebook post
+async function publishFacebookPost(
+  supabaseAdmin: SupabaseClient,
+  post: ScheduledPost,
+  page: FacebookPage
+): Promise<{ success: boolean; error?: string; platformPostId?: string; permalink?: string }> {
+  try {
+    // Update status to publishing
+    await supabaseAdmin
+      .from('sch_scheduled_posts')
+      .update({ status: 'publishing', updated_at: new Date().toISOString() })
+      .eq('id', post.id);
+
+    // Collect storage paths for signed URLs
+    const storagePaths: string[] = [];
+    post.media.forEach((m) => {
+      if (m.storagePath) storagePaths.push(m.storagePath);
+    });
+
+    // Generate fresh signed URLs
+    const signedUrlMap = await getSignedUrls(supabaseAdmin, storagePaths);
+
+    // Update media with fresh URLs
+    const mediaWithUrls = post.media.map((m) => ({
+      ...m,
+      url: m.storagePath ? signedUrlMap.get(m.storagePath) || m.url : m.url,
+    }));
+
+    let platformPostId: string;
+    let permalink: string | undefined;
+
+    // Determine post type
+    const fbPostType = post.fb_post_type || detectFacebookPostType(post);
+    console.log(`Publishing Facebook post type: ${fbPostType}`);
+
+    switch (fbPostType) {
+      case 'photo': {
+        const result = await createPhotoPost(page.page_id, page.page_access_token, {
+          photoUrl: mediaWithUrls[0]?.url,
+          caption: post.caption || undefined,
+        });
+        platformPostId = result.id;
+        permalink = result.permalink;
+        break;
+      }
+
+      case 'video': {
+        const result = await createVideoPost(page.page_id, page.page_access_token, {
+          videoUrl: mediaWithUrls[0]?.url,
+          description: post.caption || undefined,
+        });
+        platformPostId = result.id;
+        break;
+      }
+
+      case 'album': {
+        const result = await createAlbumPost(page.page_id, page.page_access_token, {
+          photoUrls: mediaWithUrls.map(m => m.url),
+          caption: post.caption || undefined,
+        });
+        platformPostId = result.id;
+        permalink = result.permalink;
+        break;
+      }
+
+      case 'link':
+      default: {
+        const result = await createLinkPost(page.page_id, page.page_access_token, {
+          message: post.caption || undefined,
+        });
+        platformPostId = result.id;
+        permalink = result.permalink;
+        break;
+      }
+    }
+
+    // Update post as published
+    await supabaseAdmin
+      .from('sch_scheduled_posts')
+      .update({
+        status: 'published',
+        platform_post_id: platformPostId,
+        permalink: permalink || null,
+        published_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', post.id);
+
+    return { success: true, platformPostId, permalink };
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+    console.error(`Failed to publish Facebook post ${post.id}:`, errorMessage);
+
+    // Update post as failed
+    await supabaseAdmin
+      .from('sch_scheduled_posts')
+      .update({
+        status: 'failed',
+        error_message: errorMessage,
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', post.id);
+
+    return { success: false, error: errorMessage };
+  }
+}
+
+// Detect Facebook post type based on media
+function detectFacebookPostType(post: ScheduledPost): string {
+  if (!post.media || post.media.length === 0) return 'link';
+  if (post.media.length > 1) return 'album';
+  return post.media[0].type === 'video' ? 'video' : 'photo';
+}
+
 serve(async (req: Request) => {
   // Handle CORS for manual invocation
   const corsResponse = handleCors(req);
@@ -296,30 +424,60 @@ serve(async (req: Request) => {
     const results: Array<{ postId: string; success: boolean; error?: string }> = [];
 
     for (const post of duePosts as ScheduledPost[]) {
-      // Get the Instagram account for this post
-      const { data: account, error: accountError } = await supabaseAdmin
-        .from('ig_accounts')
-        .select('id, ig_user_id, access_token')
-        .eq('id', post.account_id)
-        .single();
+      const platform = post.platform || 'instagram'; // Default to Instagram for backwards compatibility
+      console.log(`Processing ${platform} post ${post.id}`);
 
-      if (accountError || !account) {
-        console.error(`Account not found for post ${post.id}`);
-        await supabaseAdmin
-          .from('sch_scheduled_posts')
-          .update({
-            status: 'failed',
-            error_message: 'Instagram account not found or disconnected',
-            updated_at: new Date().toISOString(),
-          })
-          .eq('id', post.id);
-        results.push({ postId: post.id, success: false, error: 'Account not found' });
-        continue;
+      if (platform === 'facebook') {
+        // Get the Facebook page for this post
+        const { data: page, error: pageError } = await supabaseAdmin
+          .from('fb_pages')
+          .select('id, page_id, page_access_token')
+          .eq('id', post.account_id)
+          .single();
+
+        if (pageError || !page) {
+          console.error(`Facebook page not found for post ${post.id}`);
+          await supabaseAdmin
+            .from('sch_scheduled_posts')
+            .update({
+              status: 'failed',
+              error_message: 'Facebook page not found or disconnected',
+              updated_at: new Date().toISOString(),
+            })
+            .eq('id', post.id);
+          results.push({ postId: post.id, success: false, error: 'Facebook page not found' });
+          continue;
+        }
+
+        // Publish the Facebook post
+        const result = await publishFacebookPost(supabaseAdmin, post, page as FacebookPage);
+        results.push({ postId: post.id, ...result });
+      } else {
+        // Get the Instagram account for this post
+        const { data: account, error: accountError } = await supabaseAdmin
+          .from('ig_accounts')
+          .select('id, ig_user_id, access_token')
+          .eq('id', post.account_id)
+          .single();
+
+        if (accountError || !account) {
+          console.error(`Instagram account not found for post ${post.id}`);
+          await supabaseAdmin
+            .from('sch_scheduled_posts')
+            .update({
+              status: 'failed',
+              error_message: 'Instagram account not found or disconnected',
+              updated_at: new Date().toISOString(),
+            })
+            .eq('id', post.id);
+          results.push({ postId: post.id, success: false, error: 'Account not found' });
+          continue;
+        }
+
+        // Publish the Instagram post
+        const result = await publishPost(supabaseAdmin, post, account as InstagramAccount);
+        results.push({ postId: post.id, ...result });
       }
-
-      // Publish the post
-      const result = await publishPost(supabaseAdmin, post, account as InstagramAccount);
-      results.push({ postId: post.id, ...result });
 
       // Small delay between posts to avoid rate limiting
       if (duePosts.indexOf(post) < duePosts.length - 1) {

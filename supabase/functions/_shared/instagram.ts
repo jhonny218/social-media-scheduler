@@ -1,7 +1,6 @@
 // Instagram Graph API utilities
 
 const INSTAGRAM_GRAPH_API = 'https://graph.instagram.com/v24.0';
-const FACEBOOK_GRAPH_API = 'https://graph.facebook.com/v24.0';
 
 export interface InstagramAccount {
   id: string;

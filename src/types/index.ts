@@ -47,6 +47,26 @@ export interface InstagramAccount {
   updatedAt: string;
 }
 
+// Facebook Page types (fb_ prefix in database)
+export interface FacebookPage {
+  id: string;
+  userId: string;
+  pageId: string;
+  pageName: string;
+  pageCategory?: string;
+  pageAccessToken: string;
+  tokenExpiresAt?: string;
+  profilePictureUrl?: string;
+  followersCount: number;
+  fanCount: number;
+  website?: string;
+  isConnected: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export type FacebookPostType = 'photo' | 'video' | 'link' | 'album' | 'reel';
+
 // Post types
 export type PostType = 'feed' | 'story' | 'reel' | 'carousel' | 'pin' | 'video';
 export type PostStatus = 'draft' | 'scheduled' | 'publishing' | 'published' | 'failed';
@@ -84,6 +104,7 @@ export interface ScheduledPost {
   accountId: string;
   platformUserId: string; // was: instagramUserId
   postType: PostType;
+  fbPostType?: FacebookPostType; // Facebook-specific post type
   caption?: string;
   media: PostMedia[];
   scheduledTime: string | Date;
@@ -104,6 +125,7 @@ export interface PostInput {
   platform: Platform;
   accountId: string;
   postType: PostType;
+  fbPostType?: FacebookPostType; // Facebook-specific post type
   caption?: string;
   media: PostMedia[];
   scheduledTime: Date;

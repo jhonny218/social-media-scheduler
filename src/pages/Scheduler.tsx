@@ -17,12 +17,15 @@ import {
   Skeleton,
   Chip,
   CircularProgress,
+  Avatar,
 } from '@mui/material';
 import {
   CalendarMonth as CalendarIcon,
   Add as AddIcon,
   Refresh as RefreshIcon,
   Sync as SyncIcon,
+  Instagram as InstagramIcon,
+  Facebook as FacebookIcon,
 } from '@mui/icons-material';
 import { useSearchParams } from 'react-router-dom';
 import { startOfMonth, endOfMonth, addMonths, addDays, format } from 'date-fns';
@@ -30,6 +33,7 @@ import toast from 'react-hot-toast';
 import { SlotInfo } from 'react-big-calendar';
 import { useAuth } from '../hooks/useAuth';
 import { useInstagram } from '../hooks/useInstagram';
+import { useFacebook } from '../hooks/useFacebook';
 import { usePosts } from '../hooks/usePosts';
 import { useInstagramMedia } from '../hooks/useInstagramMedia';
 import { useViewPreference } from '../hooks/useViewPreference';
@@ -47,7 +51,26 @@ import { filterPostsForGrid } from '../utils/gridHelpers';
 const Scheduler: React.FC = () => {
   const [searchParams, setSearchParams] = useSearchParams();
   const { user } = useAuth();
-  const { accounts } = useInstagram();
+  const { accounts: instagramAccounts } = useInstagram();
+  const { pages: facebookPages } = useFacebook();
+
+  // Combined accounts for filtering
+  const accounts = useMemo(() => [
+    ...instagramAccounts.map(a => ({
+      id: a.id,
+      name: `@${a.username}`,
+      username: a.username,
+      type: 'instagram' as const,
+      profilePictureUrl: a.profilePictureUrl,
+    })),
+    ...facebookPages.map(p => ({
+      id: p.id,
+      name: p.pageName,
+      username: p.pageName,
+      type: 'facebook' as const,
+      profilePictureUrl: p.profilePictureUrl,
+    })),
+  ], [instagramAccounts, facebookPages]);
 
   // View preference (persisted to localStorage)
   const { view: viewMode, setView: setViewMode } = useViewPreference();
@@ -303,7 +326,7 @@ const Scheduler: React.FC = () => {
           </Typography>
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap' }}>
             <Typography variant="body1" color="text.secondary">
-              Schedule and manage your Instagram posts
+              Schedule and manage your social media posts
             </Typography>
             {instagramMediaLoading ? (
               <Chip
@@ -389,7 +412,7 @@ const Scheduler: React.FC = () => {
           >
             {/* Filters */}
             <Box sx={{ display: 'flex', gap: 2, flexWrap: 'wrap' }}>
-              <FormControl size="small" sx={{ minWidth: 150 }}>
+              <FormControl size="small" sx={{ minWidth: 220 }}>
                 <InputLabel>Account</InputLabel>
                 <Select
                   value={selectedAccount}
@@ -399,7 +422,20 @@ const Scheduler: React.FC = () => {
                   <MenuItem value="all">All Accounts</MenuItem>
                   {accounts.map((account) => (
                     <MenuItem key={account.id} value={account.id}>
-                      @{account.username}
+                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                        {account.type === 'instagram' ? (
+                          <InstagramIcon sx={{ fontSize: 16, color: '#E4405F' }} />
+                        ) : (
+                          <FacebookIcon sx={{ fontSize: 16, color: '#1877F2' }} />
+                        )}
+                        <Avatar
+                          src={account.profilePictureUrl}
+                          sx={{ width: 20, height: 20, fontSize: 10 }}
+                        >
+                          {account.username[0].toUpperCase()}
+                        </Avatar>
+                        {account.name}
+                      </Box>
                     </MenuItem>
                   ))}
                 </Select>
