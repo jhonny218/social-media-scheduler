@@ -12,21 +12,32 @@ export interface UploadProgress {
 export type UploadProgressCallback = (progress: UploadProgress) => void;
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-const dbRowToMediaItem = (row: any): MediaItem => ({
-  id: row.id,
-  userId: row.user_id,
-  fileName: row.file_name,
-  fileType: row.file_type as MediaType,
-  mimeType: row.mime_type,
-  fileSize: row.file_size,
-  storagePath: row.storage_path,
-  // Generate CDN URL from storage path (Bunny URLs are public, no signing needed)
-  downloadUrl: row.storage_path ? getCdnUrl(row.storage_path) : row.download_url,
-  thumbnailUrl: row.thumbnail_url || undefined,
-  width: row.width || undefined,
-  height: row.height || undefined,
-  uploadedAt: row.uploaded_at,
-});
+const dbRowToMediaItem = (row: any): MediaItem => {
+  // Use download_url from database if it's valid, otherwise generate from storage_path
+  let downloadUrl = row.download_url;
+  if (row.storage_path && isBunnyConfigured()) {
+    try {
+      downloadUrl = getCdnUrl(row.storage_path);
+    } catch {
+      // Fall back to database URL if CDN URL generation fails
+    }
+  }
+
+  return {
+    id: row.id,
+    userId: row.user_id,
+    fileName: row.file_name,
+    fileType: row.file_type as MediaType,
+    mimeType: row.mime_type,
+    fileSize: row.file_size,
+    storagePath: row.storage_path,
+    downloadUrl,
+    thumbnailUrl: row.thumbnail_url || undefined,
+    width: row.width || undefined,
+    height: row.height || undefined,
+    uploadedAt: row.uploaded_at,
+  };
+};
 
 export class MediaService {
   private userId: string;
