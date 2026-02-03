@@ -1,6 +1,7 @@
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
 import { corsHeaders, handleCors } from '../_shared/cors.ts';
 import { createSupabaseAdmin, getUserFromRequest } from '../_shared/supabase.ts';
+import { getCdnUrl } from '../_shared/bunny.ts';
 import {
   createMediaContainer,
   createCarouselContainer,
@@ -101,18 +102,13 @@ serve(async (req) => {
     try {
       let publishResult: { id: string; permalink?: string };
 
-      // Get signed URLs for media if they have storage paths
-      const mediaWithUrls = await Promise.all(
-        scheduledPost.media.map(async (media) => {
-          if (media.storagePath) {
-            const { data } = await supabaseAdmin.storage
-              .from('media')
-              .createSignedUrl(media.storagePath, 3600); // 1 hour
-            return { ...media, url: data?.signedUrl || media.url };
-          }
-          return media;
-        })
-      );
+      // Get CDN URLs for media (Bunny URLs are public, no signing needed)
+      const mediaWithUrls = scheduledPost.media.map((media) => {
+        if (media.storagePath) {
+          return { ...media, url: getCdnUrl(media.storagePath) };
+        }
+        return media;
+      });
 
       // Handle different post types
       if (scheduledPost.post_type === 'carousel') {
@@ -156,13 +152,10 @@ serve(async (req) => {
         // Create reel container
         const media = mediaWithUrls[0];
 
-        // Get cover URL if available
+        // Get cover URL if available (from Bunny CDN)
         let coverUrl: string | undefined;
         if (scheduledPost.reel_cover?.storagePath) {
-          const { data } = await supabaseAdmin.storage
-            .from('media')
-            .createSignedUrl(scheduledPost.reel_cover.storagePath, 3600);
-          coverUrl = data?.signedUrl;
+          coverUrl = getCdnUrl(scheduledPost.reel_cover.storagePath);
         } else if (scheduledPost.reel_cover?.url) {
           coverUrl = scheduledPost.reel_cover.url;
         }

@@ -1,5 +1,6 @@
 import { v4 as uuidv4 } from 'uuid';
-import { supabase, TABLES, STORAGE_BUCKETS } from '../config/supabase';
+import { supabase, TABLES } from '../config/supabase';
+import { getCdnUrl, isBunnyConfigured } from '../config/bunny';
 import { MediaItem, MediaType } from '../types';
 
 export interface UploadProgress {
@@ -10,10 +11,8 @@ export interface UploadProgress {
 
 export type UploadProgressCallback = (progress: UploadProgress) => void;
 
-const SIGNED_URL_EXPIRY_SECONDS = 60 * 60;
-
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-const dbRowToMediaItem = (row: any, signedUrl?: string | null): MediaItem => ({
+const dbRowToMediaItem = (row: any): MediaItem => ({
   id: row.id,
   userId: row.user_id,
   fileName: row.file_name,
@@ -21,7 +20,8 @@ const dbRowToMediaItem = (row: any, signedUrl?: string | null): MediaItem => ({
   mimeType: row.mime_type,
   fileSize: row.file_size,
   storagePath: row.storage_path,
-  downloadUrl: signedUrl || row.download_url,
+  // Generate CDN URL from storage path (Bunny URLs are public, no signing needed)
+  downloadUrl: row.storage_path ? getCdnUrl(row.storage_path) : row.download_url,
   thumbnailUrl: row.thumbnail_url || undefined,
   width: row.width || undefined,
   height: row.height || undefined,
@@ -54,60 +54,18 @@ export class MediaService {
     return `${uuid}.${extension}`;
   }
 
-  private async createSignedUrl(storagePath: string): Promise<string> {
-    const { data, error } = await supabase.storage
-      .from(STORAGE_BUCKETS.MEDIA)
-      .createSignedUrl(storagePath, SIGNED_URL_EXPIRY_SECONDS);
-
-    if (error || !data?.signedUrl) {
-      throw new Error(error?.message || 'Failed to create signed URL');
-    }
-
-    return data.signedUrl;
-  }
-
-  // Attach signed URLs for private bucket access
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  private async attachSignedUrls(rows: any[]): Promise<MediaItem[]> {
-    if (!rows.length) return [];
-
-    const paths = rows
-      .map((row) => row.storage_path)
-      .filter((path: string | null) => Boolean(path));
-
-    if (!paths.length) {
-      return rows.map((row) => dbRowToMediaItem(row));
-    }
-
-    const { data: signedData, error } = await supabase.storage
-      .from(STORAGE_BUCKETS.MEDIA)
-      .createSignedUrls(paths, SIGNED_URL_EXPIRY_SECONDS);
-
-    if (error || !signedData) {
-      return rows.map((row) => dbRowToMediaItem(row));
-    }
-
-    const urlByPath = new Map(
-      signedData
-        .filter((entry) => entry.path && !entry.error)
-        .map((entry) => [entry.path as string, entry.signedUrl])
-    );
-
-    return rows.map((row) =>
-      dbRowToMediaItem(row, urlByPath.get(row.storage_path) || row.download_url)
-    );
-  }
-
-  // Upload a file to Supabase Storage
+  // Upload a file to Bunny via edge function
   async uploadFile(
     file: File,
     onProgress?: UploadProgressCallback
   ): Promise<MediaItem> {
-    const fileName = this.generateFileName(file.name);
-    const storagePath = `${this.storagePath}/${fileName}`;
+    if (!isBunnyConfigured()) {
+      throw new Error('Storage is not configured. Please set VITE_BUNNY_CDN_URL.');
+    }
 
-    // Supabase doesn't have built-in progress tracking for uploads
-    // Simulate progress for UX
+    const fileName = this.generateFileName(file.name);
+
+    // Report initial progress
     if (onProgress) {
       onProgress({
         progress: 0,
@@ -116,41 +74,73 @@ export class MediaService {
       });
     }
 
-    const { data: signedUpload, error: signedUploadError } = await supabase.storage
-      .from(STORAGE_BUCKETS.MEDIA)
-      .createSignedUploadUrl(storagePath, { upsert: false });
+    // Create form data
+    const formData = new FormData();
+    formData.append('file', file);
+    formData.append('path', fileName);
 
-    if (signedUploadError || !signedUpload?.token) {
-      throw new Error(`Failed to create signed upload URL: ${signedUploadError?.message || 'Unknown error'}`);
+    // Get auth token
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session?.access_token) {
+      throw new Error('Not authenticated');
     }
 
-    // Upload to Supabase Storage using signed URL
-    const { error: uploadError } = await supabase.storage
-      .from(STORAGE_BUCKETS.MEDIA)
-      .uploadToSignedUrl(storagePath, signedUpload.token, file, {
-        cacheControl: '3600',
-        contentType: file.type,
+    // Upload via edge function with progress tracking using XMLHttpRequest
+    const uploadResult = await new Promise<{
+      storagePath: string;
+      cdnUrl: string;
+      fileName: string;
+      fileSize: number;
+      mimeType: string;
+    }>((resolve, reject) => {
+      const xhr = new XMLHttpRequest();
+
+      xhr.upload.addEventListener('progress', (event) => {
+        if (event.lengthComputable && onProgress) {
+          const progress = Math.round((event.loaded / event.total) * 100);
+          onProgress({
+            progress,
+            bytesTransferred: event.loaded,
+            totalBytes: event.total,
+          });
+        }
       });
 
-    if (uploadError) {
-      throw new Error(`Upload failed: ${uploadError.message}`);
-    }
-
-    if (onProgress) {
-      onProgress({
-        progress: 100,
-        bytesTransferred: file.size,
-        totalBytes: file.size,
+      xhr.addEventListener('load', () => {
+        if (xhr.status >= 200 && xhr.status < 300) {
+          try {
+            const response = JSON.parse(xhr.responseText);
+            if (response.success) {
+              resolve(response.data);
+            } else {
+              reject(new Error(response.error || 'Upload failed'));
+            }
+          } catch {
+            reject(new Error('Invalid response from server'));
+          }
+        } else {
+          try {
+            const response = JSON.parse(xhr.responseText);
+            reject(new Error(response.error || `Upload failed with status ${xhr.status}`));
+          } catch {
+            reject(new Error(`Upload failed with status ${xhr.status}`));
+          }
+        }
       });
-    }
 
-    let downloadUrl = '';
-    try {
-      downloadUrl = await this.createSignedUrl(storagePath);
-    } catch (error) {
-      await supabase.storage.from(STORAGE_BUCKETS.MEDIA).remove([storagePath]);
-      throw error;
-    }
+      xhr.addEventListener('error', () => {
+        reject(new Error('Network error during upload'));
+      });
+
+      xhr.addEventListener('abort', () => {
+        reject(new Error('Upload was cancelled'));
+      });
+
+      const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+      xhr.open('POST', `${supabaseUrl}/functions/v1/upload-media`);
+      xhr.setRequestHeader('Authorization', `Bearer ${session.access_token}`);
+      xhr.send(formData);
+    });
 
     // Get image dimensions if it's an image
     let width: number | undefined;
@@ -170,8 +160,8 @@ export class MediaService {
       file_type: this.getMediaType(file.type),
       mime_type: file.type,
       file_size: file.size,
-      storage_path: storagePath,
-      download_url: downloadUrl,
+      storage_path: uploadResult.storagePath,
+      download_url: uploadResult.cdnUrl,
       width: width || null,
       height: height || null,
       uploaded_at: now,
@@ -184,12 +174,16 @@ export class MediaService {
       .single();
 
     if (insertError) {
-      // Clean up uploaded file if database insert fails
-      await supabase.storage.from(STORAGE_BUCKETS.MEDIA).remove([storagePath]);
+      // Try to clean up uploaded file if database insert fails
+      try {
+        await this.deleteStorageFile(uploadResult.storagePath);
+      } catch (cleanupError) {
+        console.error('Failed to cleanup file after db error:', cleanupError);
+      }
       throw new Error(`Failed to save media: ${insertError.message}`);
     }
 
-    return dbRowToMediaItem(data, downloadUrl);
+    return dbRowToMediaItem(data);
   }
 
   // Get image dimensions
@@ -228,7 +222,7 @@ export class MediaService {
   }
 
   // Upload a base64 image (used for reel covers)
-  // Returns the storage path (not a signed URL) so it can be stored in the database
+  // Returns the storage path so it can be stored in the database
   async uploadBase64Image(base64Data: string, prefix: string = 'cover'): Promise<string> {
     // Extract mime type and data from base64 string
     const matches = base64Data.match(/^data:([^;]+);base64,(.+)$/);
@@ -246,42 +240,50 @@ export class MediaService {
       byteNumbers[i] = byteCharacters.charCodeAt(i);
     }
     const byteArray = new Uint8Array(byteNumbers);
-    const blob = new Blob([byteArray], { type: mimeType });
 
     // Generate filename
     const extension = mimeType.split('/')[1] || 'jpg';
     const fileName = `${prefix}_${uuidv4()}.${extension}`;
-    const storagePath = `${this.storagePath}/${fileName}`;
 
-    // Create signed upload URL
-    const { data: signedUpload, error: signedUploadError } = await supabase.storage
-      .from(STORAGE_BUCKETS.MEDIA)
-      .createSignedUploadUrl(storagePath, { upsert: false });
+    // Create a File object
+    const file = new File([byteArray], fileName, { type: mimeType });
 
-    if (signedUploadError || !signedUpload?.token) {
-      throw new Error(`Failed to create signed upload URL: ${signedUploadError?.message || 'Unknown error'}`);
+    // Upload using the standard upload method (without saving to media library)
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session?.access_token) {
+      throw new Error('Not authenticated');
     }
 
-    // Upload to storage
-    const { error: uploadError } = await supabase.storage
-      .from(STORAGE_BUCKETS.MEDIA)
-      .uploadToSignedUrl(storagePath, signedUpload.token, blob, {
-        cacheControl: '3600',
-        contentType: mimeType,
-      });
+    const formData = new FormData();
+    formData.append('file', file);
+    formData.append('path', fileName);
 
-    if (uploadError) {
-      throw new Error(`Upload failed: ${uploadError.message}`);
+    const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+    const response = await fetch(`${supabaseUrl}/functions/v1/upload-media`, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${session.access_token}`,
+      },
+      body: formData,
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      throw new Error(errorData.error || `Upload failed: ${response.status}`);
     }
 
-    // Return the storage path (not the signed URL)
-    // The signed URL will be generated when fetching posts
-    return storagePath;
+    const result = await response.json();
+    if (!result.success) {
+      throw new Error(result.error || 'Upload failed');
+    }
+
+    // Return the storage path (the CDN URL will be generated when needed)
+    return result.data.storagePath;
   }
 
-  // Generate a signed URL for a storage path (public method for use by other services)
-  async getSignedUrl(storagePath: string): Promise<string> {
-    return this.createSignedUrl(storagePath);
+  // Generate a CDN URL for a storage path (public method for use by other services)
+  getPublicUrl(storagePath: string): string {
+    return getCdnUrl(storagePath);
   }
 
   // Get all media items
@@ -296,7 +298,7 @@ export class MediaService {
       throw new Error(`Failed to fetch media: ${error.message}`);
     }
 
-    return this.attachSignedUrls(data || []);
+    return (data || []).map(dbRowToMediaItem);
   }
 
   // Get recent media items
@@ -312,7 +314,7 @@ export class MediaService {
       throw new Error(`Failed to fetch media: ${error.message}`);
     }
 
-    return this.attachSignedUrls(data || []);
+    return (data || []).map(dbRowToMediaItem);
   }
 
   // Get media by type
@@ -328,7 +330,7 @@ export class MediaService {
       throw new Error(`Failed to fetch media: ${error.message}`);
     }
 
-    return this.attachSignedUrls(data || []);
+    return (data || []).map(dbRowToMediaItem);
   }
 
   // Get a single media item by ID
@@ -349,14 +351,30 @@ export class MediaService {
 
     if (!data) return null;
 
-    let signedUrl: string | null = null;
-    try {
-      signedUrl = await this.createSignedUrl(data.storage_path);
-    } catch (signedError) {
-      console.warn('Failed to create signed URL for media:', signedError);
+    return dbRowToMediaItem(data);
+  }
+
+  // Delete a file from Bunny storage via edge function
+  private async deleteStorageFile(storagePath: string): Promise<void> {
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session?.access_token) {
+      throw new Error('Not authenticated');
     }
 
-    return dbRowToMediaItem(data, signedUrl || data.download_url);
+    const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+    const response = await fetch(`${supabaseUrl}/functions/v1/delete-media`, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${session.access_token}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ storagePath }),
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      throw new Error(errorData.error || `Delete failed: ${response.status}`);
+    }
   }
 
   // Delete a media item
@@ -368,12 +386,11 @@ export class MediaService {
     }
 
     // Delete from Storage
-    const { error: storageError } = await supabase.storage
-      .from(STORAGE_BUCKETS.MEDIA)
-      .remove([mediaItem.storagePath]);
-
-    if (storageError) {
+    try {
+      await this.deleteStorageFile(mediaItem.storagePath);
+    } catch (storageError) {
       console.error('Failed to delete from storage:', storageError);
+      // Continue with database deletion even if storage delete fails
     }
 
     // Delete from database
@@ -407,13 +424,13 @@ export class MediaService {
 
   // Validate file before upload
   validateFile(file: File): { valid: boolean; error?: string } {
-    const maxSize = 100 * 1024 * 1024; // 100MB
+    const maxSize = 500 * 1024 * 1024; // 500MB (Bunny supports larger files)
     const allowedImageTypes = ['image/jpeg', 'image/png', 'image/gif', 'image/webp'];
     const allowedVideoTypes = ['video/mp4', 'video/quicktime', 'video/x-msvideo'];
     const allowedTypes = [...allowedImageTypes, ...allowedVideoTypes];
 
     if (file.size > maxSize) {
-      return { valid: false, error: 'File size exceeds 100MB limit' };
+      return { valid: false, error: 'File size exceeds 500MB limit' };
     }
 
     if (!allowedTypes.includes(file.type)) {

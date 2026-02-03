@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
-import { supabase, TABLES, PLATFORMS, STORAGE_BUCKETS } from '../config/supabase';
+import { supabase, TABLES, PLATFORMS } from '../config/supabase';
+import { getCdnUrl } from '../config/bunny';
 import { useAuth } from './useAuth';
 import { ScheduledPost, PostInput, PostStatus, CalendarEvent, PostMedia, ReelCover } from '../types';
 
@@ -45,60 +46,28 @@ interface PostRow {
   updated_at: string;
 }
 
-const SIGNED_URL_EXPIRY_SECONDS = 60 * 60; // 1 hour
-
-// Generate signed URLs for media items that have storagePath
-async function attachMediaUrls(posts: ScheduledPost[]): Promise<ScheduledPost[]> {
-  // Collect all storage paths from media items
-  const pathsToSign: string[] = [];
-
-  posts.forEach(post => {
-    post.media?.forEach(media => {
-      if (media.storagePath) {
-        pathsToSign.push(media.storagePath);
-      }
-      if (media.thumbnailStoragePath) {
-        pathsToSign.push(media.thumbnailStoragePath);
-      }
-    });
-  });
-
-  if (pathsToSign.length === 0) return posts;
-
-  // Get signed URLs in batch
-  const { data: signedData, error } = await supabase.storage
-    .from(STORAGE_BUCKETS.MEDIA)
-    .createSignedUrls(pathsToSign, SIGNED_URL_EXPIRY_SECONDS);
-
-  if (error || !signedData) {
-    console.error('Failed to generate signed URLs for media:', error);
-    return posts;
-  }
-
-  const urlByPath = new Map(
-    signedData
-      .filter(entry => entry.path && !entry.error)
-      .map(entry => [entry.path as string, entry.signedUrl])
-  );
-
-  // Update posts with fresh URLs
+// Generate CDN URLs for media items that have storagePath
+function attachMediaUrls(posts: ScheduledPost[]): ScheduledPost[] {
   return posts.map(post => {
     if (!post.media || post.media.length === 0) return post;
 
     const updatedMedia = post.media.map(media => {
       const updates: Partial<PostMedia> = {};
 
+      // Generate CDN URL from storage path (Bunny URLs are public)
       if (media.storagePath) {
-        const freshUrl = urlByPath.get(media.storagePath);
-        if (freshUrl) {
-          updates.url = freshUrl;
+        try {
+          updates.url = getCdnUrl(media.storagePath);
+        } catch {
+          // Keep existing URL if CDN URL generation fails
         }
       }
 
       if (media.thumbnailStoragePath) {
-        const freshThumbnailUrl = urlByPath.get(media.thumbnailStoragePath);
-        if (freshThumbnailUrl) {
-          updates.thumbnailUrl = freshThumbnailUrl;
+        try {
+          updates.thumbnailUrl = getCdnUrl(media.thumbnailStoragePath);
+        } catch {
+          // Keep existing URL if CDN URL generation fails
         }
       }
 
@@ -109,36 +78,18 @@ async function attachMediaUrls(posts: ScheduledPost[]): Promise<ScheduledPost[]>
   });
 }
 
-// Generate signed URLs for reel covers
-async function attachReelCoverUrls(posts: ScheduledPost[]): Promise<ScheduledPost[]> {
-  const postsWithCovers = posts.filter(p => p.reelCover?.storagePath);
-  if (postsWithCovers.length === 0) return posts;
-
-  const paths = postsWithCovers.map(p => p.reelCover!.storagePath);
-
-  const { data: signedData, error } = await supabase.storage
-    .from(STORAGE_BUCKETS.MEDIA)
-    .createSignedUrls(paths, SIGNED_URL_EXPIRY_SECONDS);
-
-  if (error || !signedData) {
-    console.error('Failed to generate signed URLs for covers:', error);
-    return posts;
-  }
-
-  const urlByPath = new Map(
-    signedData
-      .filter(entry => entry.path && !entry.error)
-      .map(entry => [entry.path as string, entry.signedUrl])
-  );
-
+// Generate CDN URLs for reel covers
+function attachReelCoverUrls(posts: ScheduledPost[]): ScheduledPost[] {
   return posts.map(post => {
     if (post.reelCover?.storagePath) {
-      const url = urlByPath.get(post.reelCover.storagePath);
-      if (url) {
+      try {
+        const url = getCdnUrl(post.reelCover.storagePath);
         return {
           ...post,
           reelCover: { ...post.reelCover, url } as ReelCover,
         };
+      } catch {
+        // Keep existing reelCover if CDN URL generation fails
       }
     }
     return post;
@@ -246,9 +197,9 @@ export const usePosts = (options: UsePostsOptions = {}): UsePostsReturn => {
         }
 
         const posts = (data || []).map(dbRowToPost);
-        // Regenerate signed URLs for media and reel covers
-        const postsWithMediaUrls = await attachMediaUrls(posts);
-        const postsWithAllUrls = await attachReelCoverUrls(postsWithMediaUrls);
+        // Generate CDN URLs for media and reel covers (synchronous - no API calls needed)
+        const postsWithMediaUrls = attachMediaUrls(posts);
+        const postsWithAllUrls = attachReelCoverUrls(postsWithMediaUrls);
         setPosts(postsWithAllUrls);
         setError(null);
       } catch (err) {

@@ -2,6 +2,7 @@ import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
 import { SupabaseClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { corsHeaders, handleCors } from '../_shared/cors.ts';
 import { createSupabaseAdmin } from '../_shared/supabase.ts';
+import { getCdnUrl } from '../_shared/bunny.ts';
 import {
   createMediaContainer,
   createCarouselContainer,
@@ -20,9 +21,6 @@ import {
   createVideoPin,
   uploadVideo,
 } from '../_shared/pinterest.ts';
-
-const STORAGE_BUCKET = 'media';
-const SIGNED_URL_EXPIRY = 3600; // 1 hour
 
 interface PostMedia {
   id: string;
@@ -83,33 +81,24 @@ interface PinterestBoard {
   board_name: string;
 }
 
-interface SignedUrlEntry {
-  path: string | null;
-  signedUrl: string;
-  error: string | null;
-}
+// Generate CDN URLs for media (Bunny URLs are public, no signing needed)
+function getMediaWithUrls(post: ScheduledPost): {
+  mediaWithUrls: PostMedia[];
+  reelCoverUrl?: string;
+} {
+  // Update media with CDN URLs
+  const mediaWithUrls = post.media.map((m) => ({
+    ...m,
+    url: m.storagePath ? getCdnUrl(m.storagePath) : m.url,
+    thumbnailUrl: m.thumbnailStoragePath ? getCdnUrl(m.thumbnailStoragePath) : m.thumbnailUrl,
+  }));
 
-// Generate fresh signed URLs for media
-async function getSignedUrls(
-  supabaseAdmin: SupabaseClient,
-  paths: string[]
-): Promise<Map<string, string>> {
-  if (paths.length === 0) return new Map();
+  // Get reel cover URL
+  const reelCoverUrl = post.reel_cover?.storagePath
+    ? getCdnUrl(post.reel_cover.storagePath)
+    : undefined;
 
-  const { data, error } = await supabaseAdmin.storage
-    .from(STORAGE_BUCKET)
-    .createSignedUrls(paths, SIGNED_URL_EXPIRY);
-
-  if (error || !data) {
-    console.error('Failed to generate signed URLs:', error);
-    return new Map();
-  }
-
-  return new Map(
-    (data as SignedUrlEntry[])
-      .filter((entry: SignedUrlEntry) => entry.path && !entry.error)
-      .map((entry: SignedUrlEntry) => [entry.path as string, entry.signedUrl])
-  );
+  return { mediaWithUrls, reelCoverUrl };
 }
 
 // Publish a single post
@@ -125,32 +114,8 @@ async function publishPost(
       .update({ status: 'publishing', updated_at: new Date().toISOString() })
       .eq('id', post.id);
 
-    // Collect all storage paths that need signed URLs
-    const storagePaths: string[] = [];
-    post.media.forEach((m) => {
-      if (m.storagePath) storagePaths.push(m.storagePath);
-      if (m.thumbnailStoragePath) storagePaths.push(m.thumbnailStoragePath);
-    });
-    if (post.reel_cover?.storagePath) {
-      storagePaths.push(post.reel_cover.storagePath);
-    }
-
-    // Generate fresh signed URLs
-    const signedUrlMap = await getSignedUrls(supabaseAdmin, storagePaths);
-
-    // Update media with fresh URLs
-    const mediaWithUrls = post.media.map((m) => ({
-      ...m,
-      url: m.storagePath ? signedUrlMap.get(m.storagePath) || m.url : m.url,
-      thumbnailUrl: m.thumbnailStoragePath
-        ? signedUrlMap.get(m.thumbnailStoragePath) || m.thumbnailUrl
-        : m.thumbnailUrl,
-    }));
-
-    // Update reel cover with fresh URL
-    const reelCoverUrl = post.reel_cover?.storagePath
-      ? signedUrlMap.get(post.reel_cover.storagePath)
-      : undefined;
+    // Get CDN URLs for media
+    const { mediaWithUrls, reelCoverUrl } = getMediaWithUrls(post);
 
     let platformPostId: string;
     let permalink: string | undefined;
@@ -309,20 +274,8 @@ async function publishFacebookPost(
       .update({ status: 'publishing', updated_at: new Date().toISOString() })
       .eq('id', post.id);
 
-    // Collect storage paths for signed URLs
-    const storagePaths: string[] = [];
-    post.media.forEach((m) => {
-      if (m.storagePath) storagePaths.push(m.storagePath);
-    });
-
-    // Generate fresh signed URLs
-    const signedUrlMap = await getSignedUrls(supabaseAdmin, storagePaths);
-
-    // Update media with fresh URLs
-    const mediaWithUrls = post.media.map((m) => ({
-      ...m,
-      url: m.storagePath ? signedUrlMap.get(m.storagePath) || m.url : m.url,
-    }));
+    // Get CDN URLs for media
+    const { mediaWithUrls } = getMediaWithUrls(post);
 
     let platformPostId: string;
     let permalink: string | undefined;
@@ -424,20 +377,8 @@ async function publishPinterestPost(
       .update({ status: 'publishing', updated_at: new Date().toISOString() })
       .eq('id', post.id);
 
-    // Collect storage paths for signed URLs
-    const storagePaths: string[] = [];
-    post.media.forEach((m) => {
-      if (m.storagePath) storagePaths.push(m.storagePath);
-    });
-
-    // Generate fresh signed URLs
-    const signedUrlMap = await getSignedUrls(supabaseAdmin, storagePaths);
-
-    // Update media with fresh URLs
-    const mediaWithUrls = post.media.map((m) => ({
-      ...m,
-      url: m.storagePath ? signedUrlMap.get(m.storagePath) || m.url : m.url,
-    }));
+    // Get CDN URLs for media
+    const { mediaWithUrls } = getMediaWithUrls(post);
 
     // Pinterest requires exactly one media item per pin
     const primaryMedia = mediaWithUrls[0];

@@ -1,7 +1,6 @@
-import { supabase, TABLES, STORAGE_BUCKETS } from '../config/supabase';
+import { supabase, TABLES } from '../config/supabase';
+import { getCdnUrl } from '../config/bunny';
 import { ScheduledPost, PostInput, PostStatus, PostMedia, ReelCover } from '../types';
-
-const SIGNED_URL_EXPIRY_SECONDS = 60 * 60; // 1 hour
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const dbRowToPost = (row: any): ScheduledPost => ({
@@ -31,40 +30,59 @@ const dbRowToPost = (row: any): ScheduledPost => ({
   pinAltText: row.pin_alt_text || undefined,
 });
 
-// Generate signed URLs for reel covers
-async function attachReelCoverUrls(posts: ScheduledPost[]): Promise<ScheduledPost[]> {
-  const postsWithCovers = posts.filter(p => p.reelCover?.storagePath);
-  if (postsWithCovers.length === 0) return posts;
-
-  const paths = postsWithCovers.map(p => p.reelCover!.storagePath);
-
-  const { data: signedData, error } = await supabase.storage
-    .from(STORAGE_BUCKETS.MEDIA)
-    .createSignedUrls(paths, SIGNED_URL_EXPIRY_SECONDS);
-
-  if (error || !signedData) {
-    console.error('Failed to generate signed URLs for covers:', error);
-    return posts;
-  }
-
-  const urlByPath = new Map(
-    signedData
-      .filter(entry => entry.path && !entry.error)
-      .map(entry => [entry.path as string, entry.signedUrl])
-  );
-
+// Generate CDN URLs for reel covers (synchronous - Bunny URLs are public)
+function attachReelCoverUrls(posts: ScheduledPost[]): ScheduledPost[] {
   return posts.map(post => {
     if (post.reelCover?.storagePath) {
-      const url = urlByPath.get(post.reelCover.storagePath);
-      if (url) {
+      try {
+        const url = getCdnUrl(post.reelCover.storagePath);
         return {
           ...post,
           reelCover: { ...post.reelCover, url } as ReelCover,
         };
+      } catch {
+        // Keep existing reelCover if CDN URL generation fails
       }
     }
     return post;
   });
+}
+
+// Generate CDN URLs for media items
+function attachMediaUrls(posts: ScheduledPost[]): ScheduledPost[] {
+  return posts.map(post => {
+    if (!post.media || post.media.length === 0) return post;
+
+    const updatedMedia = post.media.map(media => {
+      const updates: Partial<PostMedia> = {};
+
+      if (media.storagePath) {
+        try {
+          updates.url = getCdnUrl(media.storagePath);
+        } catch {
+          // Keep existing URL
+        }
+      }
+
+      if (media.thumbnailStoragePath) {
+        try {
+          updates.thumbnailUrl = getCdnUrl(media.thumbnailStoragePath);
+        } catch {
+          // Keep existing URL
+        }
+      }
+
+      return Object.keys(updates).length > 0 ? { ...media, ...updates } : media;
+    });
+
+    return { ...post, media: updatedMedia };
+  });
+}
+
+// Attach all CDN URLs to posts
+function attachAllUrls(posts: ScheduledPost[]): ScheduledPost[] {
+  const withMediaUrls = attachMediaUrls(posts);
+  return attachReelCoverUrls(withMediaUrls);
 }
 
 export class PostsService {
@@ -87,7 +105,7 @@ export class PostsService {
     }
 
     const posts = (data || []).map(dbRowToPost);
-    return attachReelCoverUrls(posts);
+    return attachAllUrls(posts);
   }
 
   // Get posts with pagination
@@ -107,7 +125,7 @@ export class PostsService {
     }
 
     const posts = (data || []).map(dbRowToPost);
-    const postsWithUrls = await attachReelCoverUrls(posts);
+    const postsWithUrls = attachAllUrls(posts);
     const hasMore = count ? offset + pageSize < count : false;
 
     return { posts: postsWithUrls, hasMore };
@@ -133,7 +151,7 @@ export class PostsService {
     }
 
     const posts = (data || []).map(dbRowToPost);
-    return attachReelCoverUrls(posts);
+    return attachAllUrls(posts);
   }
 
   // Get posts for a date range
@@ -151,7 +169,7 @@ export class PostsService {
     }
 
     const posts = (data || []).map(dbRowToPost);
-    return attachReelCoverUrls(posts);
+    return attachAllUrls(posts);
   }
 
   // Get posts for a specific account
@@ -168,7 +186,7 @@ export class PostsService {
     }
 
     const posts = (data || []).map(dbRowToPost);
-    return attachReelCoverUrls(posts);
+    return attachAllUrls(posts);
   }
 
   // Get a single post by ID
@@ -190,8 +208,8 @@ export class PostsService {
     if (!data) return null;
 
     const post = dbRowToPost(data);
-    const [postWithUrl] = await attachReelCoverUrls([post]);
-    return postWithUrl;
+    const [postWithUrls] = attachAllUrls([post]);
+    return postWithUrls;
   }
 
   // Create a new post
@@ -330,7 +348,7 @@ export class PostsService {
     }
 
     const posts = (data || []).map(dbRowToPost);
-    return attachReelCoverUrls(posts);
+    return attachAllUrls(posts);
   }
 
   // Get post statistics
