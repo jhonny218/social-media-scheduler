@@ -33,6 +33,8 @@ import {
   PhotoCamera as StoryIcon,
   Instagram as InstagramIcon,
   Facebook as FacebookIcon,
+  Pinterest as PinterestIcon,
+  Link as LinkIcon,
 } from '@mui/icons-material';
 import { useForm, Controller } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -43,13 +45,14 @@ import MediaUploader, { UploadedFile } from './MediaUploader';
 import { useAuth } from '../../hooks/useAuth';
 import { useInstagram } from '../../hooks/useInstagram';
 import { useFacebook } from '../../hooks/useFacebook';
+import { usePinterest } from '../../hooks/usePinterest';
 import { MediaService } from '../../services/media.service';
 import { Platform } from '../../config/supabase';
 import { instagramService } from '../../services/instagram.service';
 import { PostMedia, FacebookPostType } from '../../types';
 
 const postSchema = z.object({
-  platform: z.enum(['instagram', 'facebook']),
+  platform: z.enum(['instagram', 'facebook', 'pinterest']),
   accountId: z.string().min(1, 'Please select an account'),
   postType: z.enum(['feed', 'story', 'reel', 'carousel', 'pin', 'video']),
   fbPostType: z.enum(['photo', 'video', 'link', 'album', 'reel']).optional(),
@@ -59,6 +62,10 @@ const postSchema = z.object({
     (date) => isBefore(new Date(), date),
     'Scheduled time must be in the future'
   ),
+  // Pinterest-specific fields
+  pinBoardId: z.string().optional(),
+  pinLink: z.string().url().optional().or(z.literal('')),
+  pinAltText: z.string().max(500, 'Alt text cannot exceed 500 characters').optional(),
 });
 
 type PostFormData = z.infer<typeof postSchema>;
@@ -84,6 +91,7 @@ const PostComposer: React.FC<PostComposerProps> = ({
   const { user } = useAuth();
   const { accounts: instagramAccounts, loading: instagramLoading } = useInstagram();
   const { pages: facebookPages, loading: facebookLoading } = useFacebook();
+  const { accounts: pinterestAccounts, boards: pinterestBoards, loading: pinterestLoading, getBoardsForAccount } = usePinterest();
   const [files, setFiles] = useState<UploadedFile[]>([]);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [aiLoading, setAiLoading] = useState(false);
@@ -110,6 +118,9 @@ const PostComposer: React.FC<PostComposerProps> = ({
       caption: '',
       firstComment: '',
       scheduledTime: addMinutes(new Date(), 30),
+      pinBoardId: '',
+      pinLink: '',
+      pinAltText: '',
       ...initialData,
     },
   });
@@ -120,8 +131,21 @@ const PostComposer: React.FC<PostComposerProps> = ({
   const accountId = watch('accountId');
 
   // Derived state for accounts based on platform
-  const accounts = platform === 'facebook' ? facebookPages : instagramAccounts;
-  const accountsLoading = platform === 'facebook' ? facebookLoading : instagramLoading;
+  const accounts = platform === 'facebook'
+    ? facebookPages
+    : platform === 'pinterest'
+      ? pinterestAccounts
+      : instagramAccounts;
+  const accountsLoading = platform === 'facebook'
+    ? facebookLoading
+    : platform === 'pinterest'
+      ? pinterestLoading
+      : instagramLoading;
+
+  // Get boards for selected Pinterest account
+  const availablePinterestBoards = platform === 'pinterest' && accountId
+    ? getBoardsForAccount(accountId)
+    : [];
 
   const buildDefaultValues = (data?: Partial<PostFormData>): PostFormData => {
     const scheduled =
@@ -132,22 +156,37 @@ const PostComposer: React.FC<PostComposerProps> = ({
           : addMinutes(new Date(), 30);
 
     return {
-      platform: (data?.platform as 'instagram' | 'facebook') ?? 'instagram',
+      platform: (data?.platform as 'instagram' | 'facebook' | 'pinterest') ?? 'instagram',
       accountId: data?.accountId ?? '',
       postType: data?.postType ?? 'feed',
       fbPostType: data?.fbPostType,
       caption: data?.caption ?? '',
       firstComment: data?.firstComment ?? '',
       scheduledTime: scheduled,
+      pinBoardId: data?.pinBoardId ?? '',
+      pinLink: data?.pinLink ?? '',
+      pinAltText: data?.pinAltText ?? '',
     };
   };
 
   // Reset account selection when platform changes
   useEffect(() => {
     setValue('accountId', '');
-    // Reset post type to feed for both platforms
-    setValue('postType', 'feed');
+    // Reset post type based on platform
+    if (platform === 'pinterest') {
+      setValue('postType', 'pin');
+      setValue('pinBoardId', '');
+    } else {
+      setValue('postType', 'feed');
+    }
   }, [platform, setValue]);
+
+  // Reset board selection when account changes for Pinterest
+  useEffect(() => {
+    if (platform === 'pinterest') {
+      setValue('pinBoardId', '');
+    }
+  }, [accountId, platform, setValue]);
 
   // Reset form when dialog closes
   useEffect(() => {
@@ -536,7 +575,9 @@ const PostComposer: React.FC<PostComposerProps> = ({
       // Get platform user ID
       const platformUserId = data.platform === 'facebook'
         ? (account as typeof facebookPages[0]).pageId
-        : (account as typeof instagramAccounts[0]).igUserId;
+        : data.platform === 'pinterest'
+          ? (account as typeof pinterestAccounts[0]).pinUserId
+          : (account as typeof instagramAccounts[0]).igUserId;
 
       if (isEditing && editPostId) {
         await postsService.updatePost(editPostId, {
@@ -663,6 +704,22 @@ const PostComposer: React.FC<PostComposerProps> = ({
                       <FacebookIcon sx={{ mr: 1 }} />
                       Facebook
                     </ToggleButton>
+                    <ToggleButton
+                      value="pinterest"
+                      sx={{
+                        px: 3,
+                        '&.Mui-selected': {
+                          backgroundColor: '#E60023',
+                          color: 'white',
+                          '&:hover': {
+                            backgroundColor: '#C41E3A',
+                          },
+                        },
+                      }}
+                    >
+                      <PinterestIcon sx={{ mr: 1 }} />
+                      Pinterest
+                    </ToggleButton>
                   </ToggleButtonGroup>
                 )}
               />
@@ -674,8 +731,10 @@ const PostComposer: React.FC<PostComposerProps> = ({
               control={control}
               render={({ field }) => (
                 <FormControl fullWidth sx={{ mb: 3 }} error={!!errors.accountId}>
-                  <InputLabel>{platform === 'facebook' ? 'Facebook Page' : 'Instagram Account'}</InputLabel>
-                  <Select {...field} label={platform === 'facebook' ? 'Facebook Page' : 'Instagram Account'}>
+                  <InputLabel>
+                    {platform === 'facebook' ? 'Facebook Page' : platform === 'pinterest' ? 'Pinterest Account' : 'Instagram Account'}
+                  </InputLabel>
+                  <Select {...field} label={platform === 'facebook' ? 'Facebook Page' : platform === 'pinterest' ? 'Pinterest Account' : 'Instagram Account'}>
                     {accountsLoading ? (
                       <MenuItem disabled>Loading accounts...</MenuItem>
                     ) : accounts.length === 0 ? (
@@ -684,6 +743,12 @@ const PostComposer: React.FC<PostComposerProps> = ({
                       facebookPages.map((page) => (
                         <MenuItem key={page.id} value={page.id}>
                           {page.pageName}
+                        </MenuItem>
+                      ))
+                    ) : platform === 'pinterest' ? (
+                      pinterestAccounts.map((account) => (
+                        <MenuItem key={account.id} value={account.id}>
+                          @{account.username}
                         </MenuItem>
                       ))
                     ) : (
@@ -702,6 +767,41 @@ const PostComposer: React.FC<PostComposerProps> = ({
                 </FormControl>
               )}
             />
+
+            {/* Pinterest Board Selection */}
+            {platform === 'pinterest' && accountId && (
+              <Controller
+                name="pinBoardId"
+                control={control}
+                rules={{ required: platform === 'pinterest' ? 'Please select a board' : false }}
+                render={({ field }) => (
+                  <FormControl fullWidth sx={{ mb: 3 }} error={!!errors.pinBoardId}>
+                    <InputLabel>Pinterest Board *</InputLabel>
+                    <Select {...field} label="Pinterest Board *">
+                      {availablePinterestBoards.length === 0 ? (
+                        <MenuItem disabled>No boards available</MenuItem>
+                      ) : (
+                        availablePinterestBoards.map((board) => (
+                          <MenuItem key={board.id} value={board.id}>
+                            {board.boardName}
+                            {board.privacy !== 'PUBLIC' && (
+                              <Typography variant="caption" color="text.secondary" sx={{ ml: 1 }}>
+                                ({board.privacy.toLowerCase()})
+                              </Typography>
+                            )}
+                          </MenuItem>
+                        ))
+                      )}
+                    </Select>
+                    {errors.pinBoardId && (
+                      <Typography variant="caption" color="error" sx={{ mt: 0.5, ml: 2 }}>
+                        {errors.pinBoardId.message}
+                      </Typography>
+                    )}
+                  </FormControl>
+                )}
+              />
+            )}
 
             {/* Post Type */}
             <Box sx={{ mb: 3 }}>
@@ -735,6 +835,17 @@ const PostComposer: React.FC<PostComposerProps> = ({
                         <ToggleButton value="carousel" sx={{ px: 3 }} disabled={!availablePostTypes.carousel}>
                           <CarouselIcon sx={{ mr: 1 }} />
                           Carousel
+                        </ToggleButton>
+                      </>
+                    ) : platform === 'pinterest' ? (
+                      <>
+                        <ToggleButton value="pin" sx={{ px: 3 }}>
+                          <ImageIcon sx={{ mr: 1 }} />
+                          Image Pin
+                        </ToggleButton>
+                        <ToggleButton value="video_pin" sx={{ px: 3 }}>
+                          <ReelIcon sx={{ mr: 1 }} />
+                          Video Pin
                         </ToggleButton>
                       </>
                     ) : (
@@ -890,6 +1001,56 @@ const PostComposer: React.FC<PostComposerProps> = ({
               </Box>
             )}
 
+            {/* Pinterest Link Field */}
+            {platform === 'pinterest' && (
+              <Box sx={{ mb: 3 }}>
+                <Typography variant="subtitle2" sx={{ mb: 1, display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                  <LinkIcon fontSize="small" />
+                  Destination Link
+                </Typography>
+                <Controller
+                  name="pinLink"
+                  control={control}
+                  render={({ field }) => (
+                    <TextField
+                      {...field}
+                      fullWidth
+                      placeholder="https://example.com/product"
+                      error={!!errors.pinLink}
+                      helperText={errors.pinLink?.message || 'URL where users will be directed when they click your pin'}
+                    />
+                  )}
+                />
+              </Box>
+            )}
+
+            {/* Pinterest Alt Text */}
+            {platform === 'pinterest' && (
+              <Box sx={{ mb: 3 }}>
+                <Typography variant="subtitle2" sx={{ mb: 1 }}>
+                  Alt Text (Accessibility)
+                </Typography>
+                <Controller
+                  name="pinAltText"
+                  control={control}
+                  render={({ field }) => (
+                    <TextField
+                      {...field}
+                      fullWidth
+                      multiline
+                      rows={2}
+                      placeholder="Describe your image for screen readers..."
+                      error={!!errors.pinAltText}
+                      helperText={
+                        errors.pinAltText?.message ||
+                        `${field.value?.length || 0}/500 characters - Helps make your pin accessible`
+                      }
+                    />
+                  )}
+                />
+              </Box>
+            )}
+
             {/* Schedule Time */}
             <Box sx={{ mb: 2 }}>
               <Typography variant="subtitle2" sx={{ mb: 1 }}>
@@ -933,12 +1094,19 @@ const PostComposer: React.FC<PostComposerProps> = ({
                         backgroundColor: '#166FE5',
                       },
                     }
-                  : {
-                      background: 'linear-gradient(45deg, #405DE6, #833AB4, #C13584)',
-                      '&:hover': {
-                        background: 'linear-gradient(45deg, #3651c9, #722d9c, #a62d71)',
-                      },
-                    }
+                  : platform === 'pinterest'
+                    ? {
+                        backgroundColor: '#E60023',
+                        '&:hover': {
+                          backgroundColor: '#C41E3A',
+                        },
+                      }
+                    : {
+                        background: 'linear-gradient(45deg, #405DE6, #833AB4, #C13584)',
+                        '&:hover': {
+                          background: 'linear-gradient(45deg, #3651c9, #722d9c, #a62d71)',
+                        },
+                      }
               }
             >
               {isSubmitting ? (

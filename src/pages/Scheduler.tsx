@@ -26,6 +26,7 @@ import {
   Sync as SyncIcon,
   Instagram as InstagramIcon,
   Facebook as FacebookIcon,
+  Pinterest as PinterestIcon,
 } from '@mui/icons-material';
 import { useSearchParams } from 'react-router-dom';
 import { startOfMonth, endOfMonth, addMonths, addDays, format } from 'date-fns';
@@ -34,6 +35,7 @@ import { SlotInfo } from 'react-big-calendar';
 import { useAuth } from '../hooks/useAuth';
 import { useInstagram } from '../hooks/useInstagram';
 import { useFacebook } from '../hooks/useFacebook';
+import { usePinterest } from '../hooks/usePinterest';
 import { usePosts } from '../hooks/usePosts';
 import { useInstagramMedia } from '../hooks/useInstagramMedia';
 import { useViewPreference } from '../hooks/useViewPreference';
@@ -53,6 +55,7 @@ const Scheduler: React.FC = () => {
   const { user } = useAuth();
   const { accounts: instagramAccounts } = useInstagram();
   const { pages: facebookPages } = useFacebook();
+  const { accounts: pinterestAccounts } = usePinterest();
 
   // Combined accounts for filtering
   const accounts = useMemo(() => [
@@ -70,7 +73,14 @@ const Scheduler: React.FC = () => {
       type: 'facebook' as const,
       profilePictureUrl: p.profilePictureUrl,
     })),
-  ], [instagramAccounts, facebookPages]);
+    ...pinterestAccounts.map(a => ({
+      id: a.id,
+      name: `@${a.username}`,
+      username: a.username,
+      type: 'pinterest' as const,
+      profilePictureUrl: a.profilePictureUrl,
+    })),
+  ], [instagramAccounts, facebookPages, pinterestAccounts]);
 
   // View preference (persisted to localStorage)
   const { view: viewMode, setView: setViewMode } = useViewPreference();
@@ -425,6 +435,8 @@ const Scheduler: React.FC = () => {
                       <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
                         {account.type === 'instagram' ? (
                           <InstagramIcon sx={{ fontSize: 16, color: '#E4405F' }} />
+                        ) : account.type === 'pinterest' ? (
+                          <PinterestIcon sx={{ fontSize: 16, color: '#E60023' }} />
                         ) : (
                           <FacebookIcon sx={{ fontSize: 16, color: '#1877F2' }} />
                         )}

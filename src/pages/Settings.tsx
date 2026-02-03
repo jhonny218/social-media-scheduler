@@ -22,6 +22,7 @@ import {
   Person as ProfileIcon,
   Instagram as InstagramIcon,
   Facebook as FacebookIcon,
+  Pinterest as PinterestIcon,
   Settings as PreferencesIcon,
 } from '@mui/icons-material';
 import { useForm, Controller } from 'react-hook-form';
@@ -29,6 +30,7 @@ import toast from 'react-hot-toast';
 import { useAuth } from '../hooks/useAuth';
 import AccountConnect from '../components/instagram/AccountConnect';
 import FBPageConnect from '../components/facebook/FBPageConnect';
+import PinAccountConnect from '../components/pinterest/PinAccountConnect';
 
 interface TabPanelProps {
   children?: React.ReactNode;
@@ -179,6 +181,7 @@ const Settings: React.FC = () => {
           <Tab icon={<ProfileIcon />} label="Profile" iconPosition="start" />
           <Tab icon={<InstagramIcon />} label="Instagram" iconPosition="start" />
           <Tab icon={<FacebookIcon />} label="Facebook" iconPosition="start" />
+          <Tab icon={<PinterestIcon />} label="Pinterest" iconPosition="start" />
           <Tab icon={<PreferencesIcon />} label="Preferences" iconPosition="start" />
         </Tabs>
 
@@ -258,8 +261,13 @@ const Settings: React.FC = () => {
             <FBPageConnect />
           </TabPanel>
 
-          {/* Preferences Tab */}
+          {/* Pinterest Tab */}
           <TabPanel value={activeTab} index={3}>
+            <PinAccountConnect />
+          </TabPanel>
+
+          {/* Preferences Tab */}
+          <TabPanel value={activeTab} index={4}>
             <Box component="form" onSubmit={handlePrefsSubmit(onPrefsSubmit)}>
               <Typography variant="h6" gutterBottom>
                 Time & Region

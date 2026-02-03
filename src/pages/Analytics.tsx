@@ -33,9 +33,10 @@ import { subDays, startOfDay, endOfDay, format } from 'date-fns';
 import { useAuth } from '../hooks/useAuth';
 import { useInstagram } from '../hooks/useInstagram';
 import { useFacebook } from '../hooks/useFacebook';
+import { usePinterest } from '../hooks/usePinterest';
 import { usePosts } from '../hooks/usePosts';
 import { AnalyticsService, AnalyticsSummary } from '../services/analytics.service';
-import { Instagram as InstagramIcon, Facebook as FacebookIcon } from '@mui/icons-material';
+import { Instagram as InstagramIcon, Facebook as FacebookIcon, Pinterest as PinterestIcon } from '@mui/icons-material';
 
 interface StatCardProps {
   title: string;
@@ -94,6 +95,7 @@ const Analytics: React.FC = () => {
   const { user } = useAuth();
   const { accounts: instagramAccounts } = useInstagram();
   const { pages: facebookPages } = useFacebook();
+  const { accounts: pinterestAccounts } = usePinterest();
   const [dateRange, setDateRange] = useState('30');
   const [selectedAccount, setSelectedAccount] = useState('all');
   const [summary, setSummary] = useState<AnalyticsSummary | null>(null);
@@ -101,8 +103,9 @@ const Analytics: React.FC = () => {
 
   // Combined accounts for filtering
   const allAccounts = [
-    ...instagramAccounts.map(a => ({ id: a.id, name: `@${a.username}`, type: 'instagram' as const })),
-    ...facebookPages.map(p => ({ id: p.id, name: p.pageName, type: 'facebook' as const })),
+    ...instagramAccounts.map(a => ({ id: a.id, name: `@${a.username}`, username: a.username, type: 'instagram' as const, profilePictureUrl: a.profilePictureUrl })),
+    ...facebookPages.map(p => ({ id: p.id, name: p.pageName, username: p.pageName, type: 'facebook' as const, profilePictureUrl: p.profilePictureUrl })),
+    ...pinterestAccounts.map(a => ({ id: a.id, name: `@${a.username}`, username: a.username, type: 'pinterest' as const, profilePictureUrl: a.profilePictureUrl })),
   ];
 
   // Calculate date range - memoize to prevent infinite re-renders
@@ -155,6 +158,8 @@ const Analytics: React.FC = () => {
     if (igAccount) return { ...igAccount, type: 'instagram' as const };
     const fbPage = facebookPages.find((p) => p.id === accountId);
     if (fbPage) return { username: fbPage.pageName, type: 'facebook' as const, ...fbPage };
+    const pinAccount = pinterestAccounts.find((a) => a.id === accountId);
+    if (pinAccount) return { ...pinAccount, type: 'pinterest' as const };
     return undefined;
   };
 
@@ -205,8 +210,22 @@ const Analytics: React.FC = () => {
               <MenuItem value="all">All Accounts</MenuItem>
               {allAccounts.map((account) => (
                 <MenuItem key={account.id} value={account.id}>
-                  {account.type === 'instagram' ? <InstagramIcon sx={{ fontSize: 16, mr: 1, verticalAlign: 'middle' }} /> : <FacebookIcon sx={{ fontSize: 16, mr: 1, verticalAlign: 'middle' }} />}
-                  {account.name}
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                    {account.type === 'instagram' ? (
+                      <InstagramIcon sx={{ fontSize: 16, color: '#E4405F' }} />
+                    ) : account.type === 'pinterest' ? (
+                      <PinterestIcon sx={{ fontSize: 16, color: '#E60023' }} />
+                    ) : (
+                      <FacebookIcon sx={{ fontSize: 16, color: '#1877F2' }} />
+                    )}
+                    <Avatar
+                      src={account.profilePictureUrl}
+                      sx={{ width: 20, height: 20, fontSize: 10 }}
+                    >
+                      {account.username[0].toUpperCase()}
+                    </Avatar>
+                    {account.name}
+                  </Box>
                 </MenuItem>
               ))}
             </Select>
@@ -570,6 +589,69 @@ const Analytics: React.FC = () => {
                             </Typography>
                             <Typography fontWeight={600} color="info.main">
                               {pagePosts.filter((p) => p.status === 'scheduled').length}
+                            </Typography>
+                          </Grid>
+                        </Grid>
+                      </CardContent>
+                    </Card>
+                  );
+                })}
+                {/* Pinterest Accounts */}
+                {pinterestAccounts.map((account) => {
+                  const accountPosts = posts.filter((p) => p.accountId === account.id);
+                  const publishedPosts = accountPosts.filter((p) => p.status === 'published');
+
+                  return (
+                    <Card key={account.id} variant="outlined">
+                      <CardContent>
+                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 2 }}>
+                          <Avatar
+                            src={account.profilePictureUrl}
+                            sx={{
+                              backgroundColor: '#E60023',
+                            }}
+                          >
+                            <PinterestIcon />
+                          </Avatar>
+                          <Box>
+                            <Typography fontWeight={600}>@{account.username}</Typography>
+                            <Typography variant="caption" color="text.secondary">
+                              Pinterest Account
+                            </Typography>
+                          </Box>
+                        </Box>
+
+                        <Grid container spacing={1}>
+                          <Grid size={6}>
+                            <Typography variant="caption" color="text.secondary">
+                              Followers
+                            </Typography>
+                            <Typography fontWeight={600}>
+                              {account.followersCount.toLocaleString()}
+                            </Typography>
+                          </Grid>
+                          <Grid size={6}>
+                            <Typography variant="caption" color="text.secondary">
+                              Posts ({dateRange}d)
+                            </Typography>
+                            <Typography fontWeight={600}>
+                              {accountPosts.length}
+                            </Typography>
+                          </Grid>
+                          <Grid size={6}>
+                            <Typography variant="caption" color="text.secondary">
+                              Published
+                            </Typography>
+                            <Typography fontWeight={600} color="success.main">
+                              {publishedPosts.length}
+                            </Typography>
+                          </Grid>
+                          <Grid size={6}>
+                            <Typography variant="caption" color="text.secondary">
+                              Scheduled
+                            </Typography>
+                            <Typography fontWeight={600} color="info.main">
+                              {accountPosts.filter((p) => p.status === 'scheduled').length}
                             </Typography>
                           </Grid>
                         </Grid>

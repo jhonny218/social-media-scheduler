@@ -21,6 +21,7 @@ import {
   GridView as GridIcon,
   Instagram as InstagramIcon,
   Facebook as FacebookIcon,
+  Pinterest as PinterestIcon,
 } from '@mui/icons-material';
 
 export type GridViewMode = 'all' | 'reels';
@@ -29,7 +30,7 @@ interface AccountOption {
   id: string;
   name: string;
   username: string;
-  type: 'instagram' | 'facebook';
+  type: 'instagram' | 'facebook' | 'pinterest';
   profilePictureUrl?: string;
 }
 
@@ -86,6 +87,8 @@ const GridFilters: React.FC<GridFiltersProps> = ({
                   <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
                     {account.type === 'instagram' ? (
                       <InstagramIcon sx={{ fontSize: 16, color: '#E4405F' }} />
+                    ) : account.type === 'pinterest' ? (
+                      <PinterestIcon sx={{ fontSize: 16, color: '#E60023' }} />
                     ) : (
                       <FacebookIcon sx={{ fontSize: 16, color: '#1877F2' }} />
                     )}

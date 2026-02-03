@@ -24,8 +24,9 @@ export const TABLES = {
   // Facebook tables
   FB_PAGES: 'fb_pages',
 
-  // Future: Pinterest tables
-  // PIN_ACCOUNTS: 'pin_accounts',
+  // Pinterest tables
+  PIN_ACCOUNTS: 'pin_accounts',
+  PIN_BOARDS: 'pin_boards',
 } as const;
 
 // Storage bucket names

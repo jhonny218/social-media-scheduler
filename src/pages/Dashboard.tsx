@@ -17,6 +17,7 @@ import {
   Error as FailedIcon,
   Instagram as InstagramIcon,
   Facebook as FacebookIcon,
+  Pinterest as PinterestIcon,
   Add as AddIcon,
   CalendarMonth as CalendarIcon,
   Link as LinkIcon,
@@ -26,6 +27,7 @@ import { startOfWeek, endOfWeek } from 'date-fns';
 import { useAuth } from '../hooks/useAuth';
 import { useInstagram } from '../hooks/useInstagram';
 import { useFacebook } from '../hooks/useFacebook';
+import { usePinterest } from '../hooks/usePinterest';
 import { usePosts } from '../hooks/usePosts';
 import PostCard from '../components/posts/PostCard';
 import PostComposer from '../components/posts/PostComposer';
@@ -80,11 +82,12 @@ const Dashboard: React.FC = () => {
   const { user } = useAuth();
   const { accounts: instagramAccounts, loading: instagramLoading } = useInstagram();
   const { pages: facebookPages, loading: facebookLoading } = useFacebook();
+  const { accounts: pinterestAccounts, loading: pinterestLoading } = usePinterest();
   const [composerOpen, setComposerOpen] = useState(false);
 
   // Combined accounts count
-  const totalAccounts = instagramAccounts.length + facebookPages.length;
-  const accountsLoading = instagramLoading || facebookLoading;
+  const totalAccounts = instagramAccounts.length + facebookPages.length + pinterestAccounts.length;
+  const accountsLoading = instagramLoading || facebookLoading || pinterestLoading;
 
   // Get current week range for posts
   const now = new Date();
@@ -112,6 +115,8 @@ const Dashboard: React.FC = () => {
     if (igAccount) return igAccount.username;
     const fbPage = facebookPages.find((p) => p.id === accountId);
     if (fbPage) return fbPage.pageName;
+    const pinAccount = pinterestAccounts.find((a) => a.id === accountId);
+    if (pinAccount) return pinAccount.username;
     return undefined;
   };
 
@@ -341,6 +346,39 @@ const Dashboard: React.FC = () => {
                         size="small"
                         variant="outlined"
                         sx={{ color: '#1877F2', borderColor: '#1877F2' }}
+                      />
+                    </Box>
+                  </CardContent>
+                </Card>
+              </Grid>
+            ))}
+            {/* Pinterest Accounts */}
+            {pinterestAccounts.map((account) => (
+              <Grid key={account.id} size={{ xs: 12, sm: 6, md: 4 }}>
+                <Card variant="outlined">
+                  <CardContent>
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+                      <Avatar
+                        src={account.profilePictureUrl}
+                        sx={{
+                          width: 48,
+                          height: 48,
+                          backgroundColor: '#E60023',
+                        }}
+                      >
+                        <PinterestIcon />
+                      </Avatar>
+                      <Box sx={{ flexGrow: 1 }}>
+                        <Typography fontWeight={600}>@{account.username}</Typography>
+                        <Typography variant="body2" color="text.secondary">
+                          {account.followersCount.toLocaleString()} followers
+                        </Typography>
+                      </Box>
+                      <Chip
+                        label="Pinterest"
+                        size="small"
+                        variant="outlined"
+                        sx={{ color: '#E60023', borderColor: '#E60023' }}
                       />
                     </Box>
                   </CardContent>

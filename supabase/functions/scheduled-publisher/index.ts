@@ -15,6 +15,11 @@ import {
   createLinkPost,
   createAlbumPost,
 } from '../_shared/facebook.ts';
+import {
+  createPin,
+  createVideoPin,
+  uploadVideo,
+} from '../_shared/pinterest.ts';
 
 const STORAGE_BUCKET = 'media';
 const SIGNED_URL_EXPIRY = 3600; // 1 hour
@@ -39,16 +44,19 @@ interface ReelCover {
 interface ScheduledPost {
   id: string;
   user_id: string;
-  platform: 'instagram' | 'facebook';
+  platform: 'instagram' | 'facebook' | 'pinterest';
   account_id: string;
   platform_user_id: string;
-  post_type: 'feed' | 'reel' | 'carousel';
+  post_type: 'feed' | 'reel' | 'carousel' | 'pin' | 'video_pin';
   fb_post_type?: 'photo' | 'video' | 'link' | 'album';
   caption: string | null;
   media: PostMedia[];
   reel_cover?: ReelCover;
   first_comment: string | null;
   scheduled_time: string;
+  pin_board_id?: string;
+  pin_link?: string;
+  pin_alt_text?: string;
 }
 
 interface InstagramAccount {
@@ -61,6 +69,18 @@ interface FacebookPage {
   id: string;
   page_id: string;
   page_access_token: string;
+}
+
+interface PinterestAccount {
+  id: string;
+  pin_user_id: string;
+  access_token: string;
+}
+
+interface PinterestBoard {
+  id: string;
+  board_id: string;
+  board_name: string;
 }
 
 interface SignedUrlEntry {
@@ -390,6 +410,108 @@ function detectFacebookPostType(post: ScheduledPost): string {
   return post.media[0].type === 'video' ? 'video' : 'photo';
 }
 
+// Publish a Pinterest post
+async function publishPinterestPost(
+  supabaseAdmin: SupabaseClient,
+  post: ScheduledPost,
+  account: PinterestAccount,
+  board: PinterestBoard
+): Promise<{ success: boolean; error?: string; platformPostId?: string; permalink?: string }> {
+  try {
+    // Update status to publishing
+    await supabaseAdmin
+      .from('sch_scheduled_posts')
+      .update({ status: 'publishing', updated_at: new Date().toISOString() })
+      .eq('id', post.id);
+
+    // Collect storage paths for signed URLs
+    const storagePaths: string[] = [];
+    post.media.forEach((m) => {
+      if (m.storagePath) storagePaths.push(m.storagePath);
+    });
+
+    // Generate fresh signed URLs
+    const signedUrlMap = await getSignedUrls(supabaseAdmin, storagePaths);
+
+    // Update media with fresh URLs
+    const mediaWithUrls = post.media.map((m) => ({
+      ...m,
+      url: m.storagePath ? signedUrlMap.get(m.storagePath) || m.url : m.url,
+    }));
+
+    // Pinterest requires exactly one media item per pin
+    const primaryMedia = mediaWithUrls[0];
+    if (!primaryMedia) {
+      throw new Error('Pinterest pins require at least one media item');
+    }
+
+    let platformPostId: string;
+    let permalink: string | undefined;
+
+    if (primaryMedia.type === 'video') {
+      // For video pins, upload video first
+      console.log('Uploading video to Pinterest...');
+      const { mediaId } = await uploadVideo(account.access_token, {
+        videoUrl: primaryMedia.url,
+      });
+
+      console.log('Creating video pin...');
+      const result = await createVideoPin(account.access_token, {
+        boardId: board.board_id,
+        videoUrl: mediaId,
+        title: post.caption?.substring(0, 100),
+        description: post.caption || undefined,
+        link: post.pin_link || undefined,
+        altText: post.pin_alt_text || undefined,
+      });
+      platformPostId = result.id;
+      permalink = result.url;
+    } else {
+      // For image pins
+      console.log('Creating image pin...');
+      const result = await createPin(account.access_token, {
+        boardId: board.board_id,
+        mediaUrl: primaryMedia.url,
+        title: post.caption?.substring(0, 100),
+        description: post.caption || undefined,
+        link: post.pin_link || undefined,
+        altText: post.pin_alt_text || undefined,
+      });
+      platformPostId = result.id;
+      permalink = result.url;
+    }
+
+    // Update post as published
+    await supabaseAdmin
+      .from('sch_scheduled_posts')
+      .update({
+        status: 'published',
+        platform_post_id: platformPostId,
+        permalink: permalink || null,
+        published_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', post.id);
+
+    return { success: true, platformPostId, permalink };
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+    console.error(`Failed to publish Pinterest post ${post.id}:`, errorMessage);
+
+    // Update post as failed
+    await supabaseAdmin
+      .from('sch_scheduled_posts')
+      .update({
+        status: 'failed',
+        error_message: errorMessage,
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', post.id);
+
+    return { success: false, error: errorMessage };
+  }
+}
+
 serve(async (req: Request) => {
   // Handle CORS for manual invocation
   const corsResponse = handleCors(req);
@@ -427,7 +549,53 @@ serve(async (req: Request) => {
       const platform = post.platform || 'instagram'; // Default to Instagram for backwards compatibility
       console.log(`Processing ${platform} post ${post.id}`);
 
-      if (platform === 'facebook') {
+      if (platform === 'pinterest') {
+        // Get the Pinterest account for this post
+        const { data: account, error: accountError } = await supabaseAdmin
+          .from('pin_accounts')
+          .select('id, pin_user_id, access_token')
+          .eq('id', post.account_id)
+          .single();
+
+        if (accountError || !account) {
+          console.error(`Pinterest account not found for post ${post.id}`);
+          await supabaseAdmin
+            .from('sch_scheduled_posts')
+            .update({
+              status: 'failed',
+              error_message: 'Pinterest account not found or disconnected',
+              updated_at: new Date().toISOString(),
+            })
+            .eq('id', post.id);
+          results.push({ postId: post.id, success: false, error: 'Pinterest account not found' });
+          continue;
+        }
+
+        // Get the board for this post
+        const { data: board, error: boardError } = await supabaseAdmin
+          .from('pin_boards')
+          .select('id, board_id, board_name')
+          .eq('id', post.pin_board_id)
+          .single();
+
+        if (boardError || !board) {
+          console.error(`Pinterest board not found for post ${post.id}`);
+          await supabaseAdmin
+            .from('sch_scheduled_posts')
+            .update({
+              status: 'failed',
+              error_message: 'Pinterest board not found',
+              updated_at: new Date().toISOString(),
+            })
+            .eq('id', post.id);
+          results.push({ postId: post.id, success: false, error: 'Pinterest board not found' });
+          continue;
+        }
+
+        // Publish the Pinterest post
+        const result = await publishPinterestPost(supabaseAdmin, post, account as PinterestAccount, board as PinterestBoard);
+        results.push({ postId: post.id, ...result });
+      } else if (platform === 'facebook') {
         // Get the Facebook page for this post
         const { data: page, error: pageError } = await supabaseAdmin
           .from('fb_pages')

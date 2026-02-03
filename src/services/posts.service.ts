@@ -25,6 +25,10 @@ const dbRowToPost = (row: any): ScheduledPost => ({
   errorMessage: row.error_message || undefined,
   createdAt: row.created_at,
   updatedAt: row.updated_at,
+  // Pinterest-specific fields
+  pinBoardId: row.pin_board_id || undefined,
+  pinLink: row.pin_link || undefined,
+  pinAltText: row.pin_alt_text || undefined,
 });
 
 // Generate signed URLs for reel covers
@@ -207,6 +211,10 @@ export class PostsService {
       publish_method: input.publishMethod,
       first_comment: input.firstComment || null,
       reel_cover: input.reelCover || null,
+      // Pinterest-specific fields
+      pin_board_id: input.pinBoardId || null,
+      pin_link: input.pinLink || null,
+      pin_alt_text: input.pinAltText || null,
       created_at: now,
       updated_at: now,
     };

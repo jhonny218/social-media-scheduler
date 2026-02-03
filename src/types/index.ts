@@ -67,6 +67,43 @@ export interface FacebookPage {
 
 export type FacebookPostType = 'photo' | 'video' | 'link' | 'album' | 'reel';
 
+// Pinterest Account types (pin_ prefix in database)
+export type PinterestAccountType = 'PERSONAL' | 'BUSINESS';
+
+export interface PinterestAccount {
+  id: string;
+  userId: string;
+  pinUserId: string;
+  username: string;
+  accessToken: string;
+  refreshToken: string;
+  tokenExpiresAt: string;
+  profilePictureUrl?: string;
+  followersCount: number;
+  accountType: PinterestAccountType;
+  isConnected: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+// Pinterest Board types
+export type PinterestBoardPrivacy = 'PUBLIC' | 'PROTECTED' | 'SECRET';
+
+export interface PinterestBoard {
+  id: string;
+  accountId: string;
+  boardId: string;
+  boardName: string;
+  description?: string;
+  pinCount: number;
+  followerCount: number;
+  privacy: PinterestBoardPrivacy;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export type PinterestPostType = 'pin' | 'video_pin';
+
 // Post types
 export type PostType = 'feed' | 'story' | 'reel' | 'carousel' | 'pin' | 'video';
 export type PostStatus = 'draft' | 'scheduled' | 'publishing' | 'published' | 'failed';
@@ -119,6 +156,10 @@ export interface ScheduledPost {
   errorMessage?: string;
   createdAt: string;
   updatedAt: string;
+  // Pinterest-specific fields
+  pinBoardId?: string;
+  pinLink?: string;
+  pinAltText?: string;
 }
 
 export interface PostInput {
@@ -132,6 +173,10 @@ export interface PostInput {
   publishMethod: PublishMethod;
   firstComment?: string;
   reelCover?: ReelCover;
+  // Pinterest-specific fields
+  pinBoardId?: string;
+  pinLink?: string;
+  pinAltText?: string;
 }
 
 // Media Library types

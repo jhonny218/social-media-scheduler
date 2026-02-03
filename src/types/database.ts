@@ -198,6 +198,91 @@ export interface Database {
         }
       }
     }
+    pin_accounts: {
+      Row: {
+        id: string
+        user_id: string
+        pin_user_id: string
+        username: string
+        access_token: string
+        refresh_token: string
+        token_expires_at: string
+        profile_picture_url: string | null
+        followers_count: number
+        account_type: string
+        is_connected: boolean
+        created_at: string
+        updated_at: string
+      }
+      Insert: {
+        id?: string
+        user_id: string
+        pin_user_id: string
+        username: string
+        access_token: string
+        refresh_token: string
+        token_expires_at: string
+        profile_picture_url?: string | null
+        followers_count?: number
+        account_type?: string
+        is_connected?: boolean
+        created_at?: string
+        updated_at?: string
+      }
+      Update: {
+        id?: string
+        user_id?: string
+        pin_user_id?: string
+        username?: string
+        access_token?: string
+        refresh_token?: string
+        token_expires_at?: string
+        profile_picture_url?: string | null
+        followers_count?: number
+        account_type?: string
+        is_connected?: boolean
+        created_at?: string
+        updated_at?: string
+      }
+    }
+    pin_boards: {
+      Row: {
+        id: string
+        account_id: string
+        board_id: string
+        board_name: string
+        description: string | null
+        pin_count: number
+        follower_count: number
+        privacy: string
+        created_at: string
+        updated_at: string
+      }
+      Insert: {
+        id?: string
+        account_id: string
+        board_id: string
+        board_name: string
+        description?: string | null
+        pin_count?: number
+        follower_count?: number
+        privacy?: string
+        created_at?: string
+        updated_at?: string
+      }
+      Update: {
+        id?: string
+        account_id?: string
+        board_id?: string
+        board_name?: string
+        description?: string | null
+        pin_count?: number
+        follower_count?: number
+        privacy?: string
+        created_at?: string
+        updated_at?: string
+      }
+    }
     Functions: {
       [_ in never]: never
     }
