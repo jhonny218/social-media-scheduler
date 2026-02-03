@@ -402,20 +402,20 @@ const MediaLibrary: React.FC = () => {
                       />
                     ) : (
                       <Box
+                        component="video"
+                        src={item.downloadUrl}
+                        muted
+                        preload="metadata"
                         sx={{
                           position: 'absolute',
                           top: 0,
                           left: 0,
                           width: '100%',
                           height: '100%',
+                          objectFit: 'cover',
                           backgroundColor: 'grey.900',
-                          display: 'flex',
-                          alignItems: 'center',
-                          justifyContent: 'center',
                         }}
-                      >
-                        <VideoIcon sx={{ fontSize: 48, color: 'grey.500' }} />
-                      </Box>
+                      />
                     )}
                     <Chip
                       icon={item.fileType === 'image' ? <ImageIcon /> : <VideoIcon />}
@@ -503,17 +503,17 @@ const MediaLibrary: React.FC = () => {
                     />
                   ) : (
                     <Box
+                      component="video"
+                      src={item.downloadUrl}
+                      muted
+                      preload="metadata"
                       sx={{
                         width: '100%',
                         height: '100%',
+                        objectFit: 'cover',
                         backgroundColor: 'grey.900',
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
                       }}
-                    >
-                      <VideoIcon sx={{ color: 'grey.500' }} />
-                    </Box>
+                    />
                   )}
                 </Box>
                 <Box sx={{ flexGrow: 1, minWidth: 0 }}>

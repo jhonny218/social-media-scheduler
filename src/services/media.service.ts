@@ -46,10 +46,6 @@ export class MediaService {
     this.userId = userId;
   }
 
-  private get storagePath(): string {
-    return `${this.userId}`;
-  }
-
   // Determine media type from mime type
   private getMediaType(mimeType: string): MediaType {
     if (mimeType.startsWith('video/')) {

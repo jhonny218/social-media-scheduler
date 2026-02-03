@@ -640,18 +640,17 @@ const MediaUploader: React.FC<MediaUploaderProps> = ({
                         }}
                       />
                     ) : (
-                      <Box
-                        sx={{
+                      <video
+                        src={item.downloadUrl}
+                        muted
+                        preload="metadata"
+                        style={{
                           width: '100%',
                           aspectRatio: '1',
-                          backgroundColor: 'grey.200',
-                          display: 'flex',
-                          alignItems: 'center',
-                          justifyContent: 'center',
+                          objectFit: 'cover',
+                          backgroundColor: '#e0e0e0',
                         }}
-                      >
-                        <VideoIcon sx={{ fontSize: 48, color: 'grey.500' }} />
-                      </Box>
+                      />
                     )}
 
                     {!isAlreadyAdded && (
