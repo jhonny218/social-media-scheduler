@@ -238,10 +238,13 @@ const PostDetailsModal: React.FC<PostDetailsModalProps> = ({
                       <Box
                         component="video"
                         src={media.url}
+                        muted
+                        preload="metadata"
                         sx={{
                           width: '100%',
                           height: '100%',
                           objectFit: 'cover',
+                          backgroundColor: 'grey.900',
                         }}
                       />
                     ) : (

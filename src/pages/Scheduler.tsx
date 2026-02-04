@@ -29,7 +29,7 @@ import {
   Pinterest as PinterestIcon,
 } from '@mui/icons-material';
 import { useSearchParams } from 'react-router-dom';
-import { startOfMonth, endOfMonth, addMonths, addDays, format } from 'date-fns';
+import { startOfMonth, endOfMonth, addMonths, format } from 'date-fns';
 import toast from 'react-hot-toast';
 import { SlotInfo } from 'react-big-calendar';
 import { useAuth } from '../hooks/useAuth';
@@ -202,19 +202,21 @@ const Scheduler: React.FC = () => {
   // Handle duplicate post
   const handleDuplicatePost = useCallback((post: ScheduledPost) => {
     setDetailsModalOpen(false);
-    // Open composer with post data but schedule for tomorrow
-    const tomorrow = addDays(new Date(), 1);
-    const scheduledTime = post.scheduledTime instanceof Date
+    // Get the original scheduled time
+    const originalTime = post.scheduledTime instanceof Date
       ? post.scheduledTime
       : typeof post.scheduledTime === 'object' && post.scheduledTime && 'toDate' in post.scheduledTime
         ? (post.scheduledTime as { toDate: () => Date }).toDate()
         : new Date();
-    tomorrow.setHours(scheduledTime.getHours(), scheduledTime.getMinutes());
+
+    // Use original time if it's in the future, otherwise use current time
+    const now = new Date();
+    const duplicateTime = originalTime > now ? originalTime : now;
 
     setEditingPost({
       ...post,
       id: '', // Clear ID to create new post
-      scheduledTime: tomorrow,
+      scheduledTime: duplicateTime,
       status: 'draft',
     });
     setComposerOpen(true);

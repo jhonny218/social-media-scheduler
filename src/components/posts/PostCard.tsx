@@ -147,9 +147,11 @@ const PostCard: React.FC<PostCardProps> = ({
         {mediaUrl ? (
           isVideo ? (
             <>
-              <CardMedia
+              <Box
                 component="video"
-                image={mediaUrl}
+                src={mediaUrl}
+                muted
+                preload="metadata"
                 sx={{
                   position: 'absolute',
                   top: 0,
@@ -157,6 +159,7 @@ const PostCard: React.FC<PostCardProps> = ({
                   width: '100%',
                   height: '100%',
                   objectFit: 'cover',
+                  backgroundColor: 'grey.900',
                 }}
               />
               <Box

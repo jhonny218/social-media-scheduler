@@ -4,6 +4,7 @@ import {
   Typography,
   IconButton,
   LinearProgress,
+  CircularProgress,
   Paper,
   Chip,
   Button,
@@ -286,6 +287,8 @@ const MediaUploader: React.FC<MediaUploaderProps> = ({
         <Box
           component="video"
           src={file.preview}
+          muted
+          preload="metadata"
           sx={{
             position: 'absolute',
             top: 0,
@@ -293,6 +296,7 @@ const MediaUploader: React.FC<MediaUploaderProps> = ({
             width: '100%',
             height: '100%',
             objectFit: 'cover',
+            backgroundColor: 'grey.900',
           }}
         />
       )}
@@ -377,7 +381,37 @@ const MediaUploader: React.FC<MediaUploaderProps> = ({
         <CloseIcon fontSize="small" />
       </IconButton>
 
-      {/* Upload progress */}
+      {/* Upload progress overlay */}
+      {!file.uploaded && !file.isFromLibrary && !file.existingMedia && (
+        <Box
+          sx={{
+            position: 'absolute',
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            backgroundColor: 'rgba(0,0,0,0.6)',
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            justifyContent: 'center',
+            gap: 1,
+          }}
+        >
+          <CircularProgress
+            variant={file.progress > 0 ? 'determinate' : 'indeterminate'}
+            value={file.progress}
+            size={40}
+            thickness={4}
+            sx={{ color: 'white' }}
+          />
+          <Typography variant="caption" sx={{ color: 'white', fontWeight: 500 }}>
+            {file.progress > 0 ? `${file.progress}%` : 'Pending...'}
+          </Typography>
+        </Box>
+      )}
+
+      {/* Upload progress bar at bottom */}
       {!file.uploaded && file.progress > 0 && file.progress < 100 && (
         <Box
           sx={{

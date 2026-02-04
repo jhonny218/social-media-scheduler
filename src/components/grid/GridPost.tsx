@@ -48,8 +48,12 @@ const GridPost: React.FC<GridPostProps> = ({
     : mediaThumbnail;
   const isCarousel = post.postType === 'carousel' || (post.media?.length || 0) > 1;
   const isReel = post.postType === 'reel';
+  const isVideo = post.media?.[0]?.type === 'video';
   const isInstagramPost = post.id.startsWith('ig_'); // Posts fetched from Instagram API
   const isScheduledOrDraft = post.status === 'scheduled' || post.status === 'draft';
+
+  // Determine if we should show video preview (video without a cover/thumbnail)
+  const showVideoPreview = isVideo && !post.media?.[0]?.thumbnailUrl && !(post.postType === 'reel' && post.reelCover?.url && !coverLoadError);
 
   const getPostTypeIcon = () => {
     if (isCarousel) return <CarouselIcon sx={{ fontSize: 20 }} />;
@@ -84,22 +88,37 @@ const GridPost: React.FC<GridPostProps> = ({
         }}
       >
         {thumbnailUrl ? (
-          <Box
-            component="img"
-            src={thumbnailUrl}
-            alt={post.caption || 'Post thumbnail'}
-            onError={() => {
-              // If cover image fails to load, fallback to media thumbnail
-              if (post.postType === 'reel' && post.reelCover?.url && !coverLoadError) {
-                setCoverLoadError(true);
-              }
-            }}
-            sx={{
-              width: '100%',
-              height: '100%',
-              objectFit: 'cover',
-            }}
-          />
+          showVideoPreview ? (
+            <Box
+              component="video"
+              src={thumbnailUrl}
+              muted
+              preload="metadata"
+              sx={{
+                width: '100%',
+                height: '100%',
+                objectFit: 'cover',
+                backgroundColor: 'grey.900',
+              }}
+            />
+          ) : (
+            <Box
+              component="img"
+              src={thumbnailUrl}
+              alt={post.caption || 'Post thumbnail'}
+              onError={() => {
+                // If cover image fails to load, fallback to media thumbnail
+                if (post.postType === 'reel' && post.reelCover?.url && !coverLoadError) {
+                  setCoverLoadError(true);
+                }
+              }}
+              sx={{
+                width: '100%',
+                height: '100%',
+                objectFit: 'cover',
+              }}
+            />
+          )
         ) : (
           <Box
             sx={{

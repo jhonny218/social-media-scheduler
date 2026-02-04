@@ -61,45 +61,18 @@ export class MediaService {
     return `${uuid}.${extension}`;
   }
 
-  // Upload a file to Bunny via edge function
-  async uploadFile(
+  // Upload via edge function (for smaller files < 50MB)
+  private async uploadFileViaEdgeFunction(
     file: File,
+    accessToken: string,
     onProgress?: UploadProgressCallback
-  ): Promise<MediaItem> {
-    if (!isBunnyConfigured()) {
-      throw new Error('Storage is not configured. Please set VITE_BUNNY_CDN_URL.');
-    }
-
+  ): Promise<{ storagePath: string; cdnUrl: string }> {
     const fileName = this.generateFileName(file.name);
-
-    // Report initial progress
-    if (onProgress) {
-      onProgress({
-        progress: 0,
-        bytesTransferred: 0,
-        totalBytes: file.size,
-      });
-    }
-
-    // Create form data
     const formData = new FormData();
     formData.append('file', file);
     formData.append('path', fileName);
 
-    // Get auth token
-    const { data: { session } } = await supabase.auth.getSession();
-    if (!session?.access_token) {
-      throw new Error('Not authenticated');
-    }
-
-    // Upload via edge function with progress tracking using XMLHttpRequest
-    const uploadResult = await new Promise<{
-      storagePath: string;
-      cdnUrl: string;
-      fileName: string;
-      fileSize: number;
-      mimeType: string;
-    }>((resolve, reject) => {
+    return new Promise((resolve, reject) => {
       const xhr = new XMLHttpRequest();
 
       xhr.upload.addEventListener('progress', (event) => {
@@ -118,7 +91,10 @@ export class MediaService {
           try {
             const response = JSON.parse(xhr.responseText);
             if (response.success) {
-              resolve(response.data);
+              resolve({
+                storagePath: response.data.storagePath,
+                cdnUrl: response.data.cdnUrl,
+              });
             } else {
               reject(new Error(response.error || 'Upload failed'));
             }
@@ -145,9 +121,121 @@ export class MediaService {
 
       const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
       xhr.open('POST', `${supabaseUrl}/functions/v1/upload-media`);
-      xhr.setRequestHeader('Authorization', `Bearer ${session.access_token}`);
+      xhr.setRequestHeader('Authorization', `Bearer ${accessToken}`);
       xhr.send(formData);
     });
+  }
+
+  // Direct upload to Bunny (for large files >= 50MB)
+  private async uploadFileDirect(
+    file: File,
+    accessToken: string,
+    onProgress?: UploadProgressCallback
+  ): Promise<{ storagePath: string; cdnUrl: string }> {
+    const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+
+    // Step 1: Get upload URL and credentials from edge function
+    const urlResponse = await fetch(`${supabaseUrl}/functions/v1/get-upload-url`, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${accessToken}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        fileName: file.name,
+        contentType: file.type,
+        fileSize: file.size,
+      }),
+    });
+
+    if (!urlResponse.ok) {
+      const errorData = await urlResponse.json().catch(() => ({}));
+      throw new Error(errorData.error || `Failed to get upload URL: ${urlResponse.status}`);
+    }
+
+    const urlResult = await urlResponse.json();
+    if (!urlResult.success) {
+      throw new Error(urlResult.error || 'Failed to get upload URL');
+    }
+
+    const { uploadUrl, storagePath, accessKey, cdnUrl } = urlResult.data;
+
+    // Step 2: Upload directly to Bunny with progress tracking
+    return new Promise((resolve, reject) => {
+      const xhr = new XMLHttpRequest();
+
+      xhr.upload.addEventListener('progress', (event) => {
+        if (event.lengthComputable && onProgress) {
+          const progress = Math.round((event.loaded / event.total) * 100);
+          onProgress({
+            progress,
+            bytesTransferred: event.loaded,
+            totalBytes: event.total,
+          });
+        }
+      });
+
+      xhr.addEventListener('load', () => {
+        if (xhr.status >= 200 && xhr.status < 300) {
+          resolve({ storagePath, cdnUrl });
+        } else {
+          reject(new Error(`Direct upload failed with status ${xhr.status}`));
+        }
+      });
+
+      xhr.addEventListener('error', () => {
+        reject(new Error('Network error during direct upload'));
+      });
+
+      xhr.addEventListener('abort', () => {
+        reject(new Error('Upload was cancelled'));
+      });
+
+      xhr.open('PUT', uploadUrl);
+      xhr.setRequestHeader('AccessKey', accessKey);
+      xhr.setRequestHeader('Content-Type', file.type);
+      xhr.send(file);
+    });
+  }
+
+  // Threshold for using direct upload (50MB - edge functions have memory limits)
+  private static DIRECT_UPLOAD_THRESHOLD = 50 * 1024 * 1024;
+
+  // Upload a file to Bunny - uses direct upload for large files
+  async uploadFile(
+    file: File,
+    onProgress?: UploadProgressCallback
+  ): Promise<MediaItem> {
+    if (!isBunnyConfigured()) {
+      throw new Error('Storage is not configured. Please set VITE_BUNNY_CDN_URL.');
+    }
+
+    // Report initial progress
+    if (onProgress) {
+      onProgress({
+        progress: 0,
+        bytesTransferred: 0,
+        totalBytes: file.size,
+      });
+    }
+
+    // Get auth token
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session?.access_token) {
+      throw new Error('Not authenticated');
+    }
+
+    let uploadResult: {
+      storagePath: string;
+      cdnUrl: string;
+    };
+
+    // Use direct upload for large files to bypass edge function memory limits
+    if (file.size >= MediaService.DIRECT_UPLOAD_THRESHOLD) {
+      uploadResult = await this.uploadFileDirect(file, session.access_token, onProgress);
+    } else {
+      uploadResult = await this.uploadFileViaEdgeFunction(file, session.access_token, onProgress);
+    }
 
     // Get image dimensions if it's an image
     let width: number | undefined;

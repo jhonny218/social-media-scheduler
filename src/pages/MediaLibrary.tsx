@@ -23,6 +23,7 @@ import {
   MenuItem,
   ListItemIcon,
   ListItemText,
+  CircularProgress,
 } from '@mui/material';
 import {
   CloudUpload as UploadIcon,
@@ -239,7 +240,7 @@ const MediaLibrary: React.FC = () => {
         </Box>
         <Button
           variant="contained"
-          startIcon={<UploadIcon />}
+          startIcon={uploading ? <CircularProgress size={20} color="inherit" /> : <UploadIcon />}
           onClick={open}
           disabled={uploading}
           sx={{
@@ -249,7 +250,7 @@ const MediaLibrary: React.FC = () => {
             },
           }}
         >
-          Upload Files
+          {uploading ? 'Uploading...' : 'Upload Files'}
         </Button>
       </Box>
 
@@ -274,6 +275,34 @@ const MediaLibrary: React.FC = () => {
           <Paper sx={{ p: 4, textAlign: 'center' }}>
             <UploadIcon sx={{ fontSize: 64, color: 'primary.main', mb: 2 }} />
             <Typography variant="h6">Drop files to upload</Typography>
+          </Paper>
+        </Box>
+      )}
+
+      {/* Upload progress overlay */}
+      {uploading && (
+        <Box
+          sx={{
+            position: 'fixed',
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            backgroundColor: 'rgba(0, 0, 0, 0.5)',
+            zIndex: 9999,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+          }}
+        >
+          <Paper sx={{ p: 4, textAlign: 'center', minWidth: 280 }}>
+            <CircularProgress size={64} sx={{ mb: 2 }} />
+            <Typography variant="h6" gutterBottom>
+              Uploading...
+            </Typography>
+            <Typography variant="body2" color="text.secondary">
+              Please wait while your files are being uploaded
+            </Typography>
           </Paper>
         </Box>
       )}
