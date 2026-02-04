@@ -27,6 +27,9 @@ import {
   Collections as CarouselIcon,
   PhotoCamera as StoryIcon,
   PlayArrow as PlayIcon,
+  Instagram as InstagramIcon,
+  Facebook as FacebookIcon,
+  Pinterest as PinterestIcon,
 } from '@mui/icons-material';
 import { format } from 'date-fns';
 import { ScheduledPost, PostStatus, PostType } from '../../types';
@@ -264,12 +267,55 @@ const PostCard: React.FC<PostCardProps> = ({
       </Box>
 
       <CardContent sx={{ flexGrow: 1, pb: 1 }}>
-        {/* Account Info */}
+        {/* Account Info with Platform Icon */}
         {accountUsername && (
-          <Box sx={{ display: 'flex', alignItems: 'center', mb: 1 }}>
-            <Avatar sx={{ width: 20, height: 20, fontSize: 12, mr: 0.5 }}>
-              {accountUsername[0].toUpperCase()}
-            </Avatar>
+          <Box sx={{ display: 'flex', alignItems: 'center', mb: 1, gap: 0.5 }}>
+            {/* Platform Icon */}
+            {post.platform === 'instagram' && (
+              <Box
+                sx={{
+                  width: 20,
+                  height: 20,
+                  borderRadius: '4px',
+                  background: 'linear-gradient(45deg, #405DE6, #833AB4, #C13584)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                }}
+              >
+                <InstagramIcon sx={{ fontSize: 14, color: 'white' }} />
+              </Box>
+            )}
+            {post.platform === 'facebook' && (
+              <Box
+                sx={{
+                  width: 20,
+                  height: 20,
+                  borderRadius: '4px',
+                  backgroundColor: '#1877F2',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                }}
+              >
+                <FacebookIcon sx={{ fontSize: 14, color: 'white' }} />
+              </Box>
+            )}
+            {post.platform === 'pinterest' && (
+              <Box
+                sx={{
+                  width: 20,
+                  height: 20,
+                  borderRadius: '4px',
+                  backgroundColor: '#E60023',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                }}
+              >
+                <PinterestIcon sx={{ fontSize: 14, color: 'white' }} />
+              </Box>
+            )}
             <Typography variant="caption" color="text.secondary">
               @{accountUsername}
             </Typography>

@@ -139,6 +139,12 @@ const MediaLibrary: React.FC = () => {
   // Dropzone configuration
   const { getRootProps, getInputProps, isDragActive, open } = useDropzone({
     onDrop: handleUpload,
+    onDropRejected: (rejectedFiles) => {
+      rejectedFiles.forEach((rejection) => {
+        const errors = rejection.errors.map((e) => e.message).join(', ');
+        toast.error(`${rejection.file.name}: ${errors}`);
+      });
+    },
     accept: {
       'image/jpeg': ['.jpg', '.jpeg'],
       'image/png': ['.png'],
@@ -147,7 +153,7 @@ const MediaLibrary: React.FC = () => {
       'video/mp4': ['.mp4'],
       'video/quicktime': ['.mov'],
     },
-    maxSize: 100 * 1024 * 1024,
+    maxSize: 500 * 1024 * 1024, // 500MB to match MediaService validation
     noClick: true,
   });
 
