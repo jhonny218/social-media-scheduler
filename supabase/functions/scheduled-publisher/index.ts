@@ -148,7 +148,12 @@ async function publishPost(
       // Wait for carousel container to be ready
       console.log('Waiting for carousel container to be ready...');
       await waitForMediaReady(carouselContainer.id, account.access_token);
-      console.log('Carousel container ready, publishing...');
+      console.log('Carousel container ready, adding delay before publishing...');
+
+      // Add delay to avoid Instagram API race condition
+      // Instagram sometimes needs extra time after container is "FINISHED"
+      await new Promise(resolve => setTimeout(resolve, 3000));
+      console.log('Publishing carousel...');
 
       // Publish carousel
       const result = await publishMedia(

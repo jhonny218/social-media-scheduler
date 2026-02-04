@@ -77,6 +77,7 @@ interface PostComposerProps {
   initialData?: Partial<PostFormData>;
   initialMedia?: PostMedia[];
   editPostId?: string;
+  initialReelCover?: { type: 'frame' | 'custom'; url?: string; storagePath?: string; timestamp?: number } | null;
 }
 
 const PostComposer: React.FC<PostComposerProps> = ({
@@ -86,6 +87,7 @@ const PostComposer: React.FC<PostComposerProps> = ({
   initialData,
   initialMedia,
   editPostId,
+  initialReelCover,
 }) => {
   const isEditing = !!editPostId;
   const { user } = useAuth();
@@ -224,6 +226,18 @@ const PostComposer: React.FC<PostComposerProps> = ({
     }
     setFiles([]);
   }, [open, initialMedia]);
+
+  // Initialize reel cover when editing
+  useEffect(() => {
+    if (!open) return;
+    if (initialReelCover?.url) {
+      setReelCover({
+        type: initialReelCover.type,
+        data: initialReelCover.url, // Use CDN URL as preview
+        timestamp: initialReelCover.timestamp,
+      });
+    }
+  }, [open, initialReelCover]);
 
   // Clear reel cover when post type changes away from reel
   useEffect(() => {
@@ -540,19 +554,32 @@ const PostComposer: React.FC<PostComposerProps> = ({
       // Upload reel cover if present (Instagram only)
       let uploadedReelCover: { type: 'frame' | 'custom'; storagePath: string; timestamp?: number } | undefined;
       if (data.platform === 'instagram' && data.postType === 'reel' && reelCover?.data) {
-        try {
-          toast.loading('Uploading cover image...', { id: 'cover-upload' });
-          const coverStoragePath = await mediaService.uploadBase64Image(reelCover.data, 'reel_cover');
+        // Check if cover is unchanged (data is a URL, not base64)
+        const isExistingCover = reelCover.data.startsWith('http') && initialReelCover?.storagePath;
+
+        if (isExistingCover) {
+          // Keep existing cover - no need to re-upload
           uploadedReelCover = {
             type: reelCover.type,
-            storagePath: coverStoragePath,
+            storagePath: initialReelCover.storagePath!,
             timestamp: reelCover.timestamp,
           };
-          toast.dismiss('cover-upload');
-        } catch (coverError) {
-          toast.dismiss('cover-upload');
-          console.error('Failed to upload cover:', coverError);
-          // Continue without cover - don't block the post
+        } else if (reelCover.data.startsWith('data:')) {
+          // New cover selected - upload it
+          try {
+            toast.loading('Uploading cover image...', { id: 'cover-upload' });
+            const coverStoragePath = await mediaService.uploadBase64Image(reelCover.data, 'reel_cover');
+            uploadedReelCover = {
+              type: reelCover.type,
+              storagePath: coverStoragePath,
+              timestamp: reelCover.timestamp,
+            };
+            toast.dismiss('cover-upload');
+          } catch (coverError) {
+            toast.dismiss('cover-upload');
+            console.error('Failed to upload cover:', coverError);
+            // Continue without cover - don't block the post
+          }
         }
       }
 

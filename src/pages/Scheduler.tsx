@@ -593,6 +593,7 @@ const Scheduler: React.FC = () => {
         }
         initialMedia={editingPost?.media}
         editPostId={editingPost?.id || undefined}
+        initialReelCover={editingPost?.reelCover}
       />
 
       {/* Delete Confirmation Dialog */}

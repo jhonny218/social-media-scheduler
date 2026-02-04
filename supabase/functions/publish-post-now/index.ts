@@ -142,6 +142,14 @@ serve(async (req) => {
           scheduledPost.caption
         );
 
+        // Wait for carousel container to be ready
+        console.log('Waiting for carousel container to be ready...');
+        await waitForMediaReady(carouselContainer.id, account.access_token);
+
+        // Add delay to avoid Instagram API race condition
+        console.log('Adding delay before publishing carousel...');
+        await new Promise(resolve => setTimeout(resolve, 3000));
+
         // Publish carousel
         publishResult = await publishMedia(
           account.ig_user_id,
