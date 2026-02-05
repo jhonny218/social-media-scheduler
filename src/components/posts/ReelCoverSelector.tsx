@@ -34,7 +34,7 @@ interface ReelCoverSelectorProps {
   open: boolean;
   onClose: () => void;
   videoUrl: string;
-  onSelectCover: (coverData: { type: 'frame' | 'custom'; data: string; timestamp?: number }) => void;
+  onSelectCover: (coverData: { type: 'frame' | 'custom'; data: string; timestamp?: number; storagePath?: string }) => void;
   initialCover?: { type: 'frame' | 'custom'; data: string; timestamp?: number };
 }
 
@@ -59,6 +59,7 @@ const ReelCoverSelector: React.FC<ReelCoverSelectorProps> = ({
 
   // Custom image state
   const [customImage, setCustomImage] = useState<string | null>(initialCover?.type === 'custom' ? initialCover.data : null);
+  const [customImageStoragePath, setCustomImageStoragePath] = useState<string | undefined>(undefined);
   const [customImageValid, setCustomImageValid] = useState(true);
   const [showCropper, setShowCropper] = useState(false);
   const [imageToCrop, setImageToCrop] = useState<string | null>(null);
@@ -246,6 +247,7 @@ const ReelCoverSelector: React.FC<ReelCoverSelectorProps> = ({
     setShowLibrary(false);
     const isValid = await checkImageAspectRatio(item.downloadUrl);
     setCustomImage(item.downloadUrl);
+    setCustomImageStoragePath(item.storagePath);
     setCustomImageValid(isValid);
     if (!isValid) {
       setImageToCrop(item.downloadUrl);
@@ -262,6 +264,7 @@ const ReelCoverSelector: React.FC<ReelCoverSelectorProps> = ({
       const dataUrl = e.target?.result as string;
       const isValid = await checkImageAspectRatio(dataUrl);
       setCustomImage(dataUrl);
+      setCustomImageStoragePath(undefined); // New upload, no existing storage path
       setCustomImageValid(isValid);
       if (!isValid) {
         setImageToCrop(dataUrl);
@@ -273,6 +276,7 @@ const ReelCoverSelector: React.FC<ReelCoverSelectorProps> = ({
   // Handle cropped image
   const handleCroppedImage = (croppedDataUrl: string) => {
     setCustomImage(croppedDataUrl);
+    setCustomImageStoragePath(undefined); // Cropped image is new base64, needs upload
     setCustomImageValid(true);
     setShowCropper(false);
     setImageToCrop(null);
@@ -290,7 +294,7 @@ const ReelCoverSelector: React.FC<ReelCoverSelectorProps> = ({
     if (activeTab === 'frame' && previewFrame) {
       onSelectCover({ type: 'frame', data: previewFrame, timestamp: currentTime });
     } else if (activeTab === 'custom' && customImage && customImageValid) {
-      onSelectCover({ type: 'custom', data: customImage });
+      onSelectCover({ type: 'custom', data: customImage, storagePath: customImageStoragePath });
     }
     onClose();
   };

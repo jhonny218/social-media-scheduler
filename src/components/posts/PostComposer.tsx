@@ -101,7 +101,7 @@ const PostComposer: React.FC<PostComposerProps> = ({
   const [error, setError] = useState<string | null>(null);
   const [captionTone, setCaptionTone] = useState<'casual' | 'professional' | 'playful' | 'inspirational'>('casual');
   // Local cover state (base64 for preview, will be uploaded on submit)
-  const [reelCover, setReelCover] = useState<{ type: 'frame' | 'custom'; data: string; timestamp?: number } | null>(null);
+  const [reelCover, setReelCover] = useState<{ type: 'frame' | 'custom'; data: string; timestamp?: number; storagePath?: string } | null>(null);
 
   const {
     control,
@@ -562,6 +562,13 @@ const PostComposer: React.FC<PostComposerProps> = ({
           uploadedReelCover = {
             type: reelCover.type,
             storagePath: initialReelCover.storagePath!,
+            timestamp: reelCover.timestamp,
+          };
+        } else if (reelCover.storagePath) {
+          // Cover selected from media library - already on CDN, use its storage path
+          uploadedReelCover = {
+            type: reelCover.type,
+            storagePath: reelCover.storagePath,
             timestamp: reelCover.timestamp,
           };
         } else if (reelCover.data.startsWith('data:')) {
