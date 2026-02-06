@@ -14,6 +14,8 @@ import {
   Divider,
   ToggleButtonGroup,
   ToggleButton,
+  Button,
+  CircularProgress,
 } from '@mui/material';
 import {
   Movie as ReelIcon,
@@ -22,6 +24,7 @@ import {
   Instagram as InstagramIcon,
   Facebook as FacebookIcon,
   Pinterest as PinterestIcon,
+  BrokenImage as BrokenImageIcon,
 } from '@mui/icons-material';
 
 export type GridViewMode = 'all' | 'reels';
@@ -46,6 +49,8 @@ interface GridFiltersProps {
   onShowReelsChange: (show: boolean) => void;
   totalPosts: number;
   filteredCount: number;
+  onFixBrokenImages?: () => void;
+  isFixingImages?: boolean;
 }
 
 const GridFilters: React.FC<GridFiltersProps> = ({
@@ -60,6 +65,8 @@ const GridFilters: React.FC<GridFiltersProps> = ({
   onShowReelsChange,
   totalPosts,
   filteredCount,
+  onFixBrokenImages,
+  isFixingImages,
 }) => {
   return (
     <Paper sx={{ p: 2, mb: 3 }}>
@@ -129,7 +136,7 @@ const GridFilters: React.FC<GridFiltersProps> = ({
           </Box>
         </Box>
 
-        {/* Right side - Post count */}
+        {/* Right side - Post count and fix button */}
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
           {gridView === 'all' && (
             <FormControlLabel
@@ -164,6 +171,18 @@ const GridFilters: React.FC<GridFiltersProps> = ({
                 </Box>
               }
             />
+          )}
+          {onFixBrokenImages && (
+            <Button
+              size="small"
+              variant="outlined"
+              onClick={onFixBrokenImages}
+              disabled={isFixingImages}
+              startIcon={isFixingImages ? <CircularProgress size={16} /> : <BrokenImageIcon />}
+              sx={{ ml: 1 }}
+            >
+              {isFixingImages ? 'Fixing...' : 'Fix Images'}
+            </Button>
           )}
           <Chip
             label={`${filteredCount} of ${totalPosts} posts`}

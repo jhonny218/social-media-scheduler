@@ -129,8 +129,10 @@ const Scheduler: React.FC = () => {
     loading: instagramMediaLoading,
     error: instagramMediaError,
     refreshMedia,
+    refreshExpiredMedia,
     lastFetched,
   } = useInstagramMedia(viewMode === 'grid' && selectedAccount ? selectedAccount : undefined);
+  const [isRefreshingMedia, setIsRefreshingMedia] = useState(false);
 
   // Check if compose param is in URL
   useEffect(() => {
@@ -292,6 +294,35 @@ const Scheduler: React.FC = () => {
     toast.success('Refreshing posts...');
   }, [refreshPosts, refreshMedia]);
 
+  // Fix broken images by mirroring Instagram media to Bunny CDN
+  const handleFixBrokenImages = useCallback(async () => {
+    setIsRefreshingMedia(true);
+    try {
+      // First, refresh from Instagram to get fresh URLs
+      toast.loading('Syncing fresh data from Instagram...', { id: 'fix-images' });
+      await refreshMedia();
+
+      toast.loading('Mirroring images to permanent storage...', { id: 'fix-images' });
+      const result = await refreshExpiredMedia();
+      toast.dismiss('fix-images');
+
+      if (result.updated > 0) {
+        toast.success(`Fixed ${result.updated} posts with broken images`);
+        refreshPosts(); // Reload posts to show fixed images
+      } else if (result.errors > 0) {
+        toast.error(`Could not fix ${result.errors} images - URLs may have expired`);
+      } else {
+        toast.success('All images are already up to date');
+      }
+    } catch (error) {
+      toast.dismiss('fix-images');
+      toast.error('Failed to fix broken images');
+      console.error('Error fixing broken images:', error);
+    } finally {
+      setIsRefreshingMedia(false);
+    }
+  }, [refreshMedia, refreshExpiredMedia, refreshPosts]);
+
   // Get account username for a post
   const getAccountUsername = (accountId: string): string | undefined => {
     return accounts.find((a) => a.id === accountId)?.username;
@@ -410,6 +441,8 @@ const Scheduler: React.FC = () => {
           onShowReelsChange={setShowReels}
           totalPosts={posts.length}
           filteredCount={filteredGridPosts.length}
+          onFixBrokenImages={handleFixBrokenImages}
+          isFixingImages={isRefreshingMedia}
         />
       ) : (
         <Paper sx={{ p: 2, mb: 3 }}>

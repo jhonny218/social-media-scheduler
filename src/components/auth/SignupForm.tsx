@@ -110,7 +110,7 @@ const SignupForm: React.FC = () => {
             WebkitTextFillColor: 'transparent',
           }}
         >
-          InstaScheduler
+          Bloom
         </Typography>
         <Typography variant="body1" color="text.secondary" sx={{ mt: 1 }}>
           Create your free account

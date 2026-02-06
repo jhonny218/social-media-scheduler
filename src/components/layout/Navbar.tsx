@@ -111,7 +111,7 @@ const Navbar: React.FC<NavbarProps> = ({ onMenuClick }) => {
             }}
             onClick={() => navigate('/dashboard')}
           >
-            InstaScheduler
+            Bloom
           </Typography>
         </Box>
 
