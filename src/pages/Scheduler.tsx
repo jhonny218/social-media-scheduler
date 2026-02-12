@@ -204,21 +204,17 @@ const Scheduler: React.FC = () => {
   // Handle duplicate post
   const handleDuplicatePost = useCallback((post: ScheduledPost) => {
     setDetailsModalOpen(false);
-    // Get the original scheduled time
+    // Get the original scheduled time - always preserve the exact date/time
     const originalTime = post.scheduledTime instanceof Date
       ? post.scheduledTime
       : typeof post.scheduledTime === 'object' && post.scheduledTime && 'toDate' in post.scheduledTime
         ? (post.scheduledTime as { toDate: () => Date }).toDate()
-        : new Date();
-
-    // Use original time if it's in the future, otherwise use current time
-    const now = new Date();
-    const duplicateTime = originalTime > now ? originalTime : now;
+        : new Date(post.scheduledTime as string);
 
     setEditingPost({
       ...post,
       id: '', // Clear ID to create new post
-      scheduledTime: duplicateTime,
+      scheduledTime: originalTime,
       status: 'draft',
     });
     setComposerOpen(true);
