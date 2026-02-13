@@ -7,6 +7,27 @@ import { supabase, TABLES } from '../config/supabase';
 const INSTAGRAM_GRAPH_API = 'https://graph.instagram.com';
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
 
+// Refresh the profile picture URL stored in ig_accounts
+async function refreshProfilePicture(igUserId: string, accessToken: string, accountId: string): Promise<void> {
+  try {
+    const url = `${INSTAGRAM_GRAPH_API}/${igUserId}?fields=profile_picture_url&access_token=${accessToken}`;
+    const response = await fetch(url);
+    if (!response.ok) return;
+    const data = await response.json();
+    if (data.profile_picture_url) {
+      await supabase
+        .from(TABLES.IG_ACCOUNTS)
+        .update({
+          profile_picture_url: data.profile_picture_url,
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', accountId);
+    }
+  } catch {
+    // Non-critical, don't fail the media refresh
+  }
+}
+
 interface InstagramMediaItem {
   id: string;
   caption?: string;
@@ -362,6 +383,9 @@ export const useInstagramMedia = (accountId?: string): UseInstagramMediaReturn =
     setError(null);
 
     try {
+      // Refresh profile picture URL (expires on Instagram CDN)
+      await refreshProfilePicture(account.igUserId, account.accessToken, account.id);
+
       const mediaItems = await fetchInstagramMedia(
         account.igUserId,
         account.accessToken
