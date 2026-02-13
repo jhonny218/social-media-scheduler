@@ -209,6 +209,13 @@ serve(async (req) => {
           await waitForMediaReady(container.id, account.access_token);
         }
 
+        // Add delay for image posts - Instagram needs time to fetch and process
+        // the image from the external URL before the container is ready
+        if (!isVideo) {
+          console.log('Adding delay for image container processing...');
+          await new Promise(resolve => setTimeout(resolve, 3000));
+        }
+
         // Publish post
         publishResult = await publishMedia(
           account.ig_user_id,

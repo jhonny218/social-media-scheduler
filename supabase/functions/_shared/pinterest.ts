@@ -15,6 +15,31 @@ export interface PublishResult {
   url?: string;
 }
 
+export interface PinterestPinMedia {
+  media_type: 'image' | 'video' | 'multiple_images' | 'multiple_mixed';
+  images?: {
+    originals?: { url: string; width: number; height: number };
+    '1200x'?: { url: string; width: number; height: number };
+    '600x'?: { url: string; width: number; height: number };
+  };
+}
+
+export interface PinterestPin {
+  id: string;
+  title?: string;
+  description?: string;
+  link?: string;
+  media?: PinterestPinMedia;
+  created_at: string;
+  board_id?: string;
+  alt_text?: string;
+}
+
+export interface PinterestPinsResponse {
+  items: PinterestPin[];
+  bookmark?: string;
+}
+
 export interface PinterestUserProfile {
   id: string;
   username: string;
@@ -116,6 +141,47 @@ export async function getUserBoards(
     follower_count: board.follower_count,
     privacy: board.privacy || 'PUBLIC',
   }));
+}
+
+/**
+ * Get user's pins from Pinterest
+ */
+export async function getUserPins(
+  accessToken: string,
+  options?: { pageSize?: number; bookmark?: string }
+): Promise<PinterestPinsResponse> {
+  const pageSize = options?.pageSize || 50;
+  let url = `${PINTEREST_API_BASE}/pins?page_size=${pageSize}`;
+  if (options?.bookmark) {
+    url += `&bookmark=${encodeURIComponent(options.bookmark)}`;
+  }
+  console.log('Fetching Pinterest pins...');
+
+  const response = await fetch(url, {
+    headers: {
+      'Authorization': `Bearer ${accessToken}`,
+      'Content-Type': 'application/json',
+    },
+  });
+
+  const responseText = await response.text();
+  console.log('Pins response:', responseText);
+
+  let data;
+  try {
+    data = JSON.parse(responseText);
+  } catch {
+    throw new Error(`Invalid response from Pinterest: ${responseText}`);
+  }
+
+  if (!response.ok || data.code) {
+    throw new Error(data.message || 'Failed to get pins');
+  }
+
+  return {
+    items: data.items || [],
+    bookmark: data.bookmark || undefined,
+  };
 }
 
 /**

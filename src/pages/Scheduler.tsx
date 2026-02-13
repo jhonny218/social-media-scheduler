@@ -38,6 +38,7 @@ import { useFacebook } from '../hooks/useFacebook';
 import { usePinterest } from '../hooks/usePinterest';
 import { usePosts } from '../hooks/usePosts';
 import { useInstagramMedia } from '../hooks/useInstagramMedia';
+import { usePinterestMedia } from '../hooks/usePinterestMedia';
 import { useViewPreference } from '../hooks/useViewPreference';
 import { useGridReorder } from '../hooks/useGridReorder';
 import CalendarView from '../components/calendar/CalendarView';
@@ -132,6 +133,13 @@ const Scheduler: React.FC = () => {
     refreshExpiredMedia,
     lastFetched,
   } = useInstagramMedia(viewMode === 'grid' && selectedAccount ? selectedAccount : undefined);
+
+  // Pinterest media hook - fetches existing pins from Pinterest
+  const {
+    loading: pinterestMediaLoading,
+    refreshMedia: refreshPinterestMedia,
+  } = usePinterestMedia(viewMode === 'grid' && selectedAccount ? selectedAccount : undefined);
+
   const [isRefreshingMedia, setIsRefreshingMedia] = useState(false);
 
   // Check if compose param is in URL
@@ -159,8 +167,8 @@ const Scheduler: React.FC = () => {
     endDate: viewMode === 'calendar' ? dateRange.end : undefined,
   });
 
-  // Combined loading state (includes Instagram sync loading)
-  const isLoading = loading || instagramMediaLoading;
+  // Combined loading state (includes Instagram and Pinterest sync loading)
+  const isLoading = loading || instagramMediaLoading || pinterestMediaLoading;
 
   // Calculate filtered posts count for grid view
   const filteredGridPosts = useMemo(() => {
@@ -283,20 +291,22 @@ const Scheduler: React.FC = () => {
     [reorderPost, refreshPosts]
   );
 
-  // Refresh all data (scheduled posts and Instagram media)
+  // Refresh all data (scheduled posts, Instagram media, and Pinterest pins)
   const handleRefreshAll = useCallback(() => {
     refreshPosts();
     refreshMedia();
+    refreshPinterestMedia();
     toast.success('Refreshing posts...');
-  }, [refreshPosts, refreshMedia]);
+  }, [refreshPosts, refreshMedia, refreshPinterestMedia]);
 
-  // Fix broken images by mirroring Instagram media to Bunny CDN
+  // Fix broken images by mirroring media to Bunny CDN
   const handleFixBrokenImages = useCallback(async () => {
     setIsRefreshingMedia(true);
     try {
-      // First, refresh from Instagram to get fresh URLs
-      toast.loading('Syncing fresh data from Instagram...', { id: 'fix-images' });
+      // First, refresh from platforms to get fresh URLs
+      toast.loading('Syncing fresh data from platforms...', { id: 'fix-images' });
       await refreshMedia();
+      await refreshPinterestMedia();
 
       toast.loading('Mirroring images to permanent storage...', { id: 'fix-images' });
       const result = await refreshExpiredMedia();
@@ -317,7 +327,7 @@ const Scheduler: React.FC = () => {
     } finally {
       setIsRefreshingMedia(false);
     }
-  }, [refreshMedia, refreshExpiredMedia, refreshPosts]);
+  }, [refreshMedia, refreshPinterestMedia, refreshExpiredMedia, refreshPosts]);
 
   // Get account username for a post
   const getAccountUsername = (accountId: string): string | undefined => {

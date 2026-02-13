@@ -118,6 +118,9 @@ export const filterPostsForGrid = (
       return false;
     }
 
+    // Pinterest pins always pass through (no feed/reel/carousel distinction)
+    if (post.platform === 'pinterest') return true;
+
     // Filter by post type
     if (post.postType === 'feed' && !showFeed) return false;
     if (post.postType === 'reel' && !showReels) return false;

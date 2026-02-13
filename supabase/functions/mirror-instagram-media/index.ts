@@ -13,6 +13,7 @@ interface MediaItem {
 interface MirrorRequest {
   media: MediaItem[];
   postId?: string; // Instagram post ID for organizing files
+  platform?: string; // Platform name for folder prefix (defaults to 'instagram')
 }
 
 interface MirrorResult {
@@ -26,12 +27,12 @@ interface MirrorResult {
   error?: string;
 }
 
-// Generate a unique filename based on Instagram media ID
-function generatePath(igMediaId: string, type: 'image' | 'video', isThumbnail: boolean = false): string {
-  const folder = 'instagram-mirror';
+// Generate a unique filename based on media ID
+function generatePath(mediaId: string, type: 'image' | 'video', isThumbnail: boolean = false, platform: string = 'instagram'): string {
+  const folder = `${platform}-mirror`;
   const extension = type === 'video' ? 'mp4' : 'jpg';
   const suffix = isThumbnail ? '_thumb' : '';
-  return `${folder}/${igMediaId}${suffix}.${extension}`;
+  return `${folder}/${mediaId}${suffix}.${extension}`;
 }
 
 serve(async (req) => {
@@ -44,7 +45,8 @@ serve(async (req) => {
     const { user } = await getUserFromRequest(req);
 
     // Get request body
-    const { media, postId }: MirrorRequest = await req.json();
+    const { media, postId, platform }: MirrorRequest = await req.json();
+    const platformFolder = platform || 'instagram';
 
     if (!media || !Array.isArray(media) || media.length === 0) {
       return new Response(
@@ -83,10 +85,10 @@ serve(async (req) => {
         }
 
         // Generate storage path
-        const storagePath = generatePath(item.id, item.type);
+        const storagePath = generatePath(item.id, item.type, false, platformFolder);
 
         // Mirror the main media file
-        console.log(`Mirroring ${item.type} from Instagram: ${item.id}`);
+        console.log(`Mirroring ${item.type} from ${platformFolder}: ${item.id}`);
         const uploadResult = await uploadFromUrl(storagePath, item.url);
 
         result.mirroredUrl = uploadResult.cdnUrl;
@@ -96,7 +98,7 @@ serve(async (req) => {
         // For videos, also mirror the thumbnail if available
         if (item.type === 'video' && item.thumbnailUrl) {
           try {
-            const thumbPath = generatePath(item.id, 'image', true);
+            const thumbPath = generatePath(item.id, 'image', true, platformFolder);
             const thumbResult = await uploadFromUrl(thumbPath, item.thumbnailUrl);
             result.thumbnailUrl = thumbResult.cdnUrl;
             result.thumbnailStoragePath = thumbResult.storagePath;
