@@ -623,6 +623,9 @@ const PostComposer: React.FC<PostComposerProps> = ({
           scheduledTime: data.scheduledTime,
           firstComment: data.platform === 'instagram' ? data.firstComment : undefined,
           reelCover: uploadedReelCover,
+          pinBoardId: data.platform === 'pinterest' ? data.pinBoardId : undefined,
+          pinLink: data.platform === 'pinterest' ? data.pinLink : undefined,
+          pinAltText: data.platform === 'pinterest' ? data.pinAltText : undefined,
         });
         toast.success('Post updated successfully!');
       } else {
@@ -638,6 +641,9 @@ const PostComposer: React.FC<PostComposerProps> = ({
             publishMethod: 'auto',
             firstComment: data.platform === 'instagram' ? data.firstComment : undefined,
             reelCover: uploadedReelCover,
+            pinBoardId: data.platform === 'pinterest' ? data.pinBoardId : undefined,
+            pinLink: data.platform === 'pinterest' ? data.pinLink : undefined,
+            pinAltText: data.platform === 'pinterest' ? data.pinAltText : undefined,
           },
           platformUserId
         );

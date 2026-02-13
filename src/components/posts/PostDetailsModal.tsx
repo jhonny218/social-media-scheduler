@@ -281,7 +281,7 @@ const PostDetailsModal: React.FC<PostDetailsModalProps> = ({
             <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2 }}>
               {getPostTypeIcon(post.postType)}
               <Typography variant="body2" color="text.secondary" sx={{ textTransform: 'capitalize' }}>
-                {post.postType} Post
+                {post.platform === 'pinterest' ? 'Pin' : `${post.postType} Post`}
               </Typography>
             </Box>
 

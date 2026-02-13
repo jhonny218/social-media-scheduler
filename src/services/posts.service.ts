@@ -269,6 +269,9 @@ export class PostsService {
     if (updates.postType) updateData.post_type = updates.postType;
     if (updates.fbPostType !== undefined) updateData.fb_post_type = updates.fbPostType;
     if (updates.reelCover !== undefined) updateData.reel_cover = updates.reelCover;
+    if (updates.pinBoardId !== undefined) updateData.pin_board_id = updates.pinBoardId || null;
+    if (updates.pinLink !== undefined) updateData.pin_link = updates.pinLink || null;
+    if (updates.pinAltText !== undefined) updateData.pin_alt_text = updates.pinAltText || null;
 
     const { error } = await supabase
       .from(TABLES.SCHEDULED_POSTS)
