@@ -69,10 +69,7 @@ const postSchema = z.object({
 }).superRefine((data, ctx) => {
   if (data.platform === 'pinterest' && data.caption && data.caption.length > 500) {
     ctx.addIssue({
-      code: z.ZodIssueCode.too_big,
-      maximum: 500,
-      type: 'string',
-      inclusive: true,
+      code: z.ZodIssueCode.custom,
       message: 'Pinterest descriptions cannot exceed 500 characters',
       path: ['caption'],
     });
