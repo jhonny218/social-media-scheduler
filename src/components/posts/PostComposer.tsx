@@ -66,6 +66,17 @@ const postSchema = z.object({
   pinBoardId: z.string().optional(),
   pinLink: z.string().url().optional().or(z.literal('')),
   pinAltText: z.string().max(500, 'Alt text cannot exceed 500 characters').optional(),
+}).superRefine((data, ctx) => {
+  if (data.platform === 'pinterest' && data.caption && data.caption.length > 500) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.too_big,
+      maximum: 500,
+      type: 'string',
+      inclusive: true,
+      message: 'Pinterest descriptions cannot exceed 500 characters',
+      path: ['caption'],
+    });
+  }
 });
 
 type PostFormData = z.infer<typeof postSchema>;
@@ -995,11 +1006,13 @@ const PostComposer: React.FC<PostComposerProps> = ({
                     multiline
                     rows={4}
                     fullWidth
-                    placeholder="Write a caption..."
+                    placeholder={platform === 'pinterest' ? 'Write a description...' : 'Write a caption...'}
                     error={!!errors.caption}
                     helperText={
                       errors.caption?.message ||
-                      `${field.value?.length || 0}/2200 characters`
+                      (platform === 'pinterest'
+                        ? `${field.value?.length || 0}/500 characters`
+                        : `${field.value?.length || 0}/2200 characters`)
                     }
                   />
                 )}

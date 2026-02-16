@@ -18,6 +18,30 @@ export interface PublishResult {
   permalink?: string;
 }
 
+// Retry helper for transient Instagram API errors
+async function withRetry<T>(
+  fn: () => Promise<T>,
+  maxRetries: number = 3,
+  delayMs: number = 3000
+): Promise<T> {
+  let lastError: Error | undefined;
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    try {
+      return await fn();
+    } catch (err) {
+      lastError = err instanceof Error ? err : new Error(String(err));
+      const isTransient = lastError.message.includes('unexpected error')
+        || lastError.message.includes('Please retry');
+      if (!isTransient || attempt === maxRetries) {
+        throw lastError;
+      }
+      console.log(`Transient error, retrying in ${delayMs}ms (attempt ${attempt + 1}/${maxRetries})...`);
+      await new Promise(resolve => setTimeout(resolve, delayMs));
+    }
+  }
+  throw lastError;
+}
+
 // Create a media container for a single image/video post
 export async function createMediaContainer(
   igUserId: string,
@@ -54,33 +78,36 @@ export async function createMediaContainer(
   params.append('access_token', accessToken);
 
   const url = `${INSTAGRAM_GRAPH_API}/${igUserId}/media`;
-  console.log('Creating media container at:', url);
-  console.log('Params:', params.toString());
 
-  const response = await fetch(url, {
-    method: 'POST',
-    body: params,
+  return withRetry(async () => {
+    console.log('Creating media container at:', url);
+    console.log('Params:', params.toString());
+
+    const response = await fetch(url, {
+      method: 'POST',
+      body: params,
+    });
+
+    const responseText = await response.text();
+    console.log('Media container response:', responseText);
+
+    let data;
+    try {
+      data = JSON.parse(responseText);
+    } catch {
+      throw new Error(`Invalid response from Instagram: ${responseText}`);
+    }
+
+    if (data.error) {
+      throw new Error(data.error.message || 'Failed to create media container');
+    }
+
+    if (!data.id) {
+      throw new Error(`Media ID not returned. Response: ${JSON.stringify(data)}`);
+    }
+
+    return { id: data.id };
   });
-
-  const responseText = await response.text();
-  console.log('Media container response:', responseText);
-
-  let data;
-  try {
-    data = JSON.parse(responseText);
-  } catch {
-    throw new Error(`Invalid response from Instagram: ${responseText}`);
-  }
-
-  if (data.error) {
-    throw new Error(data.error.message || 'Failed to create media container');
-  }
-
-  if (!data.id) {
-    throw new Error(`Media ID not returned. Response: ${JSON.stringify(data)}`);
-  }
-
-  return { id: data.id };
 }
 
 // Create a carousel container
