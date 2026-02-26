@@ -126,41 +126,44 @@ export async function createCarouselContainer(
   params.append('access_token', accessToken);
 
   const url = `${INSTAGRAM_GRAPH_API}/${igUserId}/media`;
-  console.log('Creating carousel container at:', url);
-  console.log('Children IDs:', childrenIds.join(','));
 
-  const response = await fetch(url, {
-    method: 'POST',
-    body: params,
+  return withRetry(async () => {
+    console.log('Creating carousel container at:', url);
+    console.log('Children IDs:', childrenIds.join(','));
+
+    const response = await fetch(url, {
+      method: 'POST',
+      body: params,
+    });
+
+    const responseText = await response.text();
+    console.log('Carousel container response:', responseText);
+
+    let data;
+    try {
+      data = JSON.parse(responseText);
+    } catch {
+      throw new Error(`Invalid carousel response: ${responseText}`);
+    }
+
+    if (data.error) {
+      throw new Error(data.error.message || 'Failed to create carousel container');
+    }
+
+    if (!data.id) {
+      throw new Error(`Carousel ID not returned. Response: ${JSON.stringify(data)}`);
+    }
+
+    return { id: data.id };
   });
-
-  const responseText = await response.text();
-  console.log('Carousel container response:', responseText);
-
-  let data;
-  try {
-    data = JSON.parse(responseText);
-  } catch {
-    throw new Error(`Invalid carousel response: ${responseText}`);
-  }
-
-  if (data.error) {
-    throw new Error(data.error.message || 'Failed to create carousel container');
-  }
-
-  if (!data.id) {
-    throw new Error(`Carousel ID not returned. Response: ${JSON.stringify(data)}`);
-  }
-
-  return { id: data.id };
 }
 
 // Check media container status (for videos)
 export async function checkMediaStatus(
   containerId: string,
   accessToken: string
-): Promise<{ status: string; statusCode?: string }> {
-  const url = `${INSTAGRAM_GRAPH_API}/${containerId}?fields=status_code&access_token=${accessToken}`;
+): Promise<{ status: string; statusCode?: string; errorMessage?: string }> {
+  const url = `${INSTAGRAM_GRAPH_API}/${containerId}?fields=status_code,status&access_token=${accessToken}`;
   console.log('Checking media status at:', url.replace(accessToken, '[TOKEN]'));
 
   const response = await fetch(url);
@@ -178,7 +181,11 @@ export async function checkMediaStatus(
     throw new Error(data.error.message || 'Failed to check media status');
   }
 
-  return { status: data.status_code || 'FINISHED', statusCode: data.status_code };
+  return {
+    status: data.status_code || 'FINISHED',
+    statusCode: data.status_code,
+    errorMessage: data.status,
+  };
 }
 
 // Wait for media container to be ready (for videos)
@@ -191,15 +198,17 @@ export async function waitForMediaReady(
   const pollInterval = 5000; // 5 seconds
 
   while (Date.now() - startTime < maxWaitMs) {
-    const { status } = await checkMediaStatus(containerId, accessToken);
+    const { status, errorMessage } = await checkMediaStatus(containerId, accessToken);
 
     if (status === 'FINISHED') {
       return;
     }
     if (status === 'ERROR') {
-      throw new Error('Media processing failed');
+      const detail = errorMessage ? `: ${errorMessage}` : '';
+      throw new Error(`Media processing failed${detail}`);
     }
 
+    console.log(`Container ${containerId} status: ${status}, waiting...`);
     // Wait before polling again
     await new Promise((resolve) => setTimeout(resolve, pollInterval));
   }
@@ -218,31 +227,36 @@ export async function publishMedia(
   params.append('access_token', accessToken);
 
   const url = `${INSTAGRAM_GRAPH_API}/${igUserId}/media_publish`;
-  console.log('Publishing media at:', url);
-  console.log('Container ID:', containerId);
 
-  const response = await fetch(url, {
-    method: 'POST',
-    body: params,
+  const data = await withRetry(async () => {
+    console.log('Publishing media at:', url);
+    console.log('Container ID:', containerId);
+
+    const response = await fetch(url, {
+      method: 'POST',
+      body: params,
+    });
+
+    const responseText = await response.text();
+    console.log('Publish response:', responseText);
+
+    let parsed;
+    try {
+      parsed = JSON.parse(responseText);
+    } catch {
+      throw new Error(`Invalid publish response: ${responseText}`);
+    }
+
+    if (parsed.error) {
+      throw new Error(parsed.error.message || 'Failed to publish media');
+    }
+
+    if (!parsed.id) {
+      throw new Error(`Published media ID not returned. Response: ${JSON.stringify(parsed)}`);
+    }
+
+    return parsed;
   });
-
-  const responseText = await response.text();
-  console.log('Publish response:', responseText);
-
-  let data;
-  try {
-    data = JSON.parse(responseText);
-  } catch {
-    throw new Error(`Invalid publish response: ${responseText}`);
-  }
-
-  if (data.error) {
-    throw new Error(data.error.message || 'Failed to publish media');
-  }
-
-  if (!data.id) {
-    throw new Error(`Published media ID not returned. Response: ${JSON.stringify(data)}`);
-  }
 
   // Get permalink
   let permalink: string | undefined;

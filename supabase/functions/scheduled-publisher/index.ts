@@ -125,16 +125,23 @@ async function publishPost(
       const containerIds: string[] = [];
 
       for (const media of mediaWithUrls.sort((a, b) => a.order - b.order)) {
+        if (!media.url) {
+          throw new Error(`Carousel item ${media.id} (${media.type}, order ${media.order}) has no URL. storagePath: ${media.storagePath || 'none'}`);
+        }
         const container = await createMediaContainer(
           account.ig_user_id,
           account.access_token,
           {
             imageUrl: media.type === 'image' ? media.url : undefined,
             videoUrl: media.type === 'video' ? media.url : undefined,
+            mediaType: media.type === 'video' ? 'VIDEO' : undefined,
             isCarouselItem: true,
           }
         );
         containerIds.push(container.id);
+
+        // Brief delay between carousel item creation to avoid rate limits
+        await new Promise(resolve => setTimeout(resolve, 1000));
       }
 
       // Create carousel container
@@ -317,8 +324,16 @@ async function publishFacebookPost(
       }
 
       case 'album': {
+        // Facebook albums only support photos - filter out videos
+        const photoMedia = mediaWithUrls.filter(m => m.type === 'image');
+        if (photoMedia.length === 0) {
+          throw new Error('No images found for Facebook album post');
+        }
+        if (photoMedia.length < mediaWithUrls.length) {
+          console.log(`Filtered out ${mediaWithUrls.length - photoMedia.length} video(s) from Facebook album - albums only support photos`);
+        }
         const result = await createAlbumPost(page.page_id, page.page_access_token, {
-          photoUrls: mediaWithUrls.map(m => m.url),
+          photoUrls: photoMedia.map(m => m.url),
           caption: post.caption || undefined,
         });
         platformPostId = result.id;

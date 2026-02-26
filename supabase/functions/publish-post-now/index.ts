@@ -122,16 +122,15 @@ serve(async (req) => {
             {
               imageUrl: media.type === 'image' ? media.url : undefined,
               videoUrl: media.type === 'video' ? media.url : undefined,
+              mediaType: media.type === 'video' ? 'VIDEO' : undefined,
               isCarouselItem: true,
             }
           );
 
-          // Wait for video processing if needed
-          if (media.type === 'video') {
-            await waitForMediaReady(container.id, account.access_token);
-          }
-
           childrenIds.push(container.id);
+
+          // Brief delay between carousel item creation to avoid rate limits
+          await new Promise(resolve => setTimeout(resolve, 1000));
         }
 
         // Create carousel container

@@ -25,6 +25,9 @@ import {
   Collections as CarouselIcon,
   Movie as ReelIcon,
   Image as ImageIcon,
+  Instagram as InstagramIcon,
+  Facebook as FacebookIcon,
+  Pinterest as PinterestIcon,
 } from '@mui/icons-material';
 import { format } from 'date-fns';
 import { ScheduledPost, PostStatus, PostType } from '../../types';
@@ -270,6 +273,13 @@ const PostDetailsModal: React.FC<PostDetailsModalProps> = ({
             {/* Account Info */}
             {accountUsername && (
               <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2 }}>
+                {post.platform === 'instagram' ? (
+                  <InstagramIcon sx={{ fontSize: 20, color: '#E4405F' }} />
+                ) : post.platform === 'pinterest' ? (
+                  <PinterestIcon sx={{ fontSize: 20, color: '#E60023' }} />
+                ) : (
+                  <FacebookIcon sx={{ fontSize: 20, color: '#1877F2' }} />
+                )}
                 <Avatar sx={{ width: 32, height: 32 }}>
                   {accountUsername[0].toUpperCase()}
                 </Avatar>
@@ -278,12 +288,17 @@ const PostDetailsModal: React.FC<PostDetailsModalProps> = ({
             )}
 
             {/* Post Type */}
-            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2 }}>
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
               {getPostTypeIcon(post.postType)}
               <Typography variant="body2" color="text.secondary" sx={{ textTransform: 'capitalize' }}>
                 {post.platform === 'pinterest' ? 'Pin' : `${post.postType} Post`}
               </Typography>
             </Box>
+
+            {/* Post ID */}
+            <Typography variant="caption" color="text.disabled" sx={{ mb: 2, display: 'block', fontFamily: 'monospace' }}>
+              ID: {post.id}
+            </Typography>
 
             {/* Reel Cover Preview */}
             {post.postType === 'reel' && post.reelCover?.url && (
