@@ -114,8 +114,9 @@ serve(async (req) => {
       if (scheduledPost.post_type === 'carousel') {
         // Create carousel children
         const childrenIds: string[] = [];
+        const sortedMedia = mediaWithUrls.sort((a, b) => a.order - b.order);
 
-        for (const media of mediaWithUrls.sort((a, b) => a.order - b.order)) {
+        for (const media of sortedMedia) {
           const container = await createMediaContainer(
             account.ig_user_id,
             account.access_token,
@@ -128,10 +129,23 @@ serve(async (req) => {
           );
 
           childrenIds.push(container.id);
-
-          // Brief delay between carousel item creation to avoid rate limits
-          await new Promise(resolve => setTimeout(resolve, 1000));
         }
+
+        // Poll each child container until FINISHED or ERROR
+        console.log(`Waiting for ${childrenIds.length} child containers to finish processing...`);
+        for (let i = 0; i < childrenIds.length; i++) {
+          const containerId = childrenIds[i];
+          const mediaItem = sortedMedia[i];
+          console.log(`Polling child container ${containerId} (${mediaItem.type}, order ${mediaItem.order})...`);
+          try {
+            await waitForMediaReady(containerId, account.access_token, 90000);
+            console.log(`Child container ${containerId} is FINISHED`);
+          } catch (err) {
+            const msg = err instanceof Error ? err.message : String(err);
+            throw new Error(`Carousel item #${mediaItem.order + 1} (${mediaItem.type}) failed processing: ${msg}`);
+          }
+        }
+        console.log('All child containers ready, creating carousel container...');
 
         // Create carousel container
         const carouselContainer = await createCarouselContainer(
@@ -143,11 +157,8 @@ serve(async (req) => {
 
         // Wait for carousel container to be ready
         console.log('Waiting for carousel container to be ready...');
-        await waitForMediaReady(carouselContainer.id, account.access_token);
-
-        // Add delay to avoid Instagram API race condition
-        console.log('Adding delay before publishing carousel...');
-        await new Promise(resolve => setTimeout(resolve, 3000));
+        await waitForMediaReady(carouselContainer.id, account.access_token, 60000);
+        console.log('Carousel container ready, publishing...');
 
         // Publish carousel
         publishResult = await publishMedia(
