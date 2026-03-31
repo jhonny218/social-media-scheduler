@@ -9,6 +9,7 @@ import {
   waitForMediaReady,
   publishMedia,
   postComment,
+  refreshLongLivedToken,
 } from '../_shared/instagram.ts';
 import {
   createPhotoPost,
@@ -20,6 +21,7 @@ import {
   createPin,
   createVideoPin,
   uploadVideo,
+  refreshAccessToken as refreshPinterestToken,
 } from '../_shared/pinterest.ts';
 
 interface PostMedia {
@@ -61,6 +63,7 @@ interface InstagramAccount {
   id: string;
   ig_user_id: string;
   access_token: string;
+  token_expires_at: string | null;
 }
 
 interface FacebookPage {
@@ -73,6 +76,8 @@ interface PinterestAccount {
   id: string;
   pin_user_id: string;
   access_token: string;
+  refresh_token: string | null;
+  token_expires_at: string | null;
 }
 
 interface PinterestBoard {
@@ -531,7 +536,7 @@ serve(async (req: Request) => {
         // Get the Pinterest account for this post
         const { data: account, error: accountError } = await supabaseAdmin
           .from('pin_accounts')
-          .select('id, pin_user_id, access_token')
+          .select('id, pin_user_id, access_token, refresh_token, token_expires_at')
           .eq('id', post.account_id)
           .single();
 
@@ -547,6 +552,35 @@ serve(async (req: Request) => {
             .eq('id', post.id);
           results.push({ postId: post.id, success: false, error: 'Pinterest account not found' });
           continue;
+        }
+
+        // Auto-refresh Pinterest token if it expires within 7 days
+        const pinAccount = account as PinterestAccount;
+        if (pinAccount.token_expires_at && pinAccount.refresh_token) {
+          const expiresAt = new Date(pinAccount.token_expires_at).getTime();
+          const sevenDaysMs = 7 * 24 * 60 * 60 * 1000;
+          if (expiresAt - Date.now() < sevenDaysMs) {
+            console.log(`Pinterest token for account ${pinAccount.id} expires soon, refreshing...`);
+            try {
+              const appId = Deno.env.get('PINTEREST_APP_ID') || '';
+              const appSecret = Deno.env.get('PINTEREST_APP_SECRET') || '';
+              const refreshed = await refreshPinterestToken(pinAccount.refresh_token, appId, appSecret);
+              pinAccount.access_token = refreshed.accessToken;
+              const newExpiresAt = new Date(Date.now() + refreshed.expiresIn * 1000).toISOString();
+              await supabaseAdmin
+                .from('pin_accounts')
+                .update({
+                  access_token: refreshed.accessToken,
+                  refresh_token: refreshed.refreshToken,
+                  token_expires_at: newExpiresAt,
+                  updated_at: new Date().toISOString(),
+                })
+                .eq('id', pinAccount.id);
+              console.log(`Pinterest token refreshed successfully, new expiry: ${newExpiresAt}`);
+            } catch (refreshError) {
+              console.error(`Failed to refresh Pinterest token: ${refreshError}`);
+            }
+          }
         }
 
         // Get the board for this post
@@ -571,7 +605,7 @@ serve(async (req: Request) => {
         }
 
         // Publish the Pinterest post
-        const result = await publishPinterestPost(supabaseAdmin, post, account as PinterestAccount, board as PinterestBoard);
+        const result = await publishPinterestPost(supabaseAdmin, post, pinAccount, board as PinterestBoard);
         results.push({ postId: post.id, ...result });
       } else if (platform === 'facebook') {
         // Get the Facebook page for this post
@@ -602,7 +636,7 @@ serve(async (req: Request) => {
         // Get the Instagram account for this post
         const { data: account, error: accountError } = await supabaseAdmin
           .from('ig_accounts')
-          .select('id, ig_user_id, access_token')
+          .select('id, ig_user_id, access_token, token_expires_at')
           .eq('id', post.account_id)
           .single();
 
@@ -620,8 +654,35 @@ serve(async (req: Request) => {
           continue;
         }
 
+        // Auto-refresh Instagram token if it expires within 7 days
+        const igAccount = account as InstagramAccount;
+        if (igAccount.token_expires_at) {
+          const expiresAt = new Date(igAccount.token_expires_at).getTime();
+          const sevenDaysMs = 7 * 24 * 60 * 60 * 1000;
+          if (expiresAt - Date.now() < sevenDaysMs) {
+            console.log(`Instagram token for account ${igAccount.id} expires soon, refreshing...`);
+            try {
+              const refreshed = await refreshLongLivedToken(igAccount.access_token);
+              igAccount.access_token = refreshed.accessToken;
+              const newExpiresAt = new Date(Date.now() + refreshed.expiresIn * 1000).toISOString();
+              await supabaseAdmin
+                .from('ig_accounts')
+                .update({
+                  access_token: refreshed.accessToken,
+                  token_expires_at: newExpiresAt,
+                  updated_at: new Date().toISOString(),
+                })
+                .eq('id', igAccount.id);
+              console.log(`Instagram token refreshed successfully, new expiry: ${newExpiresAt}`);
+            } catch (refreshError) {
+              console.error(`Failed to refresh Instagram token: ${refreshError}`);
+              // Continue with the existing token — it may still work if not fully expired
+            }
+          }
+        }
+
         // Publish the Instagram post
-        const result = await publishPost(supabaseAdmin, post, account as InstagramAccount);
+        const result = await publishPost(supabaseAdmin, post, igAccount);
         results.push({ postId: post.id, ...result });
       }
 

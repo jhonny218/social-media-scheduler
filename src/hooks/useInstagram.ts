@@ -223,26 +223,54 @@ export const useInstagram = (): UseInstagramReturn => {
       // Long-lived tokens typically last 60 days
       const tokenExpiresAt = new Date(Date.now() + 60 * 24 * 60 * 60 * 1000).toISOString();
 
-      const accountData = {
-        user_id: user.id,
-        ig_user_id: profile.id,
-        username: profile.username,
-        account_type: accountType,
-        access_token: accessToken,
-        token_expires_at: tokenExpiresAt,
-        profile_picture_url: profile.profile_picture_url || null,
-        followers_count: profile.followers_count || 0,
-        is_connected: true,
-        created_at: now,
-        updated_at: now,
-      };
-
-      const { error: insertError } = await supabase
+      // Check if account already exists for this user
+      const { data: existingAccount } = await supabase
         .from(TABLES.IG_ACCOUNTS)
-        .insert(accountData);
+        .select('id')
+        .eq('user_id', user.id)
+        .eq('ig_user_id', profile.id)
+        .single();
 
-      if (insertError) {
-        throw insertError;
+      if (existingAccount) {
+        // Update existing account with new token
+        const { error: updateError } = await supabase
+          .from(TABLES.IG_ACCOUNTS)
+          .update({
+            username: profile.username,
+            account_type: accountType,
+            access_token: accessToken,
+            token_expires_at: tokenExpiresAt,
+            profile_picture_url: profile.profile_picture_url || null,
+            followers_count: profile.followers_count || 0,
+            is_connected: true,
+            updated_at: now,
+          })
+          .eq('id', existingAccount.id);
+
+        if (updateError) {
+          throw updateError;
+        }
+      } else {
+        // Insert new account
+        const { error: insertError } = await supabase
+          .from(TABLES.IG_ACCOUNTS)
+          .insert({
+            user_id: user.id,
+            ig_user_id: profile.id,
+            username: profile.username,
+            account_type: accountType,
+            access_token: accessToken,
+            token_expires_at: tokenExpiresAt,
+            profile_picture_url: profile.profile_picture_url || null,
+            followers_count: profile.followers_count || 0,
+            is_connected: true,
+            created_at: now,
+            updated_at: now,
+          });
+
+        if (insertError) {
+          throw insertError;
+        }
       }
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Failed to connect Instagram account';

@@ -27,6 +27,7 @@ import {
   Pinterest as PinterestIcon,
   Add as AddIcon,
   Delete as DeleteIcon,
+  Refresh as RefreshIcon,
   CheckCircle as ConnectedIcon,
   Error as ErrorIcon,
   ExpandMore as ExpandMoreIcon,
@@ -34,6 +35,7 @@ import {
   Dashboard as BoardIcon,
 } from '@mui/icons-material';
 import toast from 'react-hot-toast';
+import { format } from 'date-fns';
 import { usePinterest } from '../../hooks/usePinterest';
 import { PinterestAccount } from '../../types';
 
@@ -45,6 +47,7 @@ const PinAccountConnect: React.FC = () => {
     error,
     getAuthUrl,
     disconnectAccount,
+    refreshToken,
     connectAccount,
     getBoardsForAccount,
   } = usePinterest();
@@ -54,6 +57,7 @@ const PinAccountConnect: React.FC = () => {
     account: PinterestAccount | null;
   }>({ open: false, account: null });
   const [disconnecting, setDisconnecting] = useState(false);
+  const [refreshingToken, setRefreshingToken] = useState<string | null>(null);
   const [expandedAccount, setExpandedAccount] = useState<string | null>(null);
 
   // Initiate Pinterest OAuth flow
@@ -115,6 +119,19 @@ const PinAccountConnect: React.FC = () => {
     }
   };
 
+  // Refresh token for an account
+  const handleRefreshToken = async (account: PinterestAccount) => {
+    setRefreshingToken(account.id);
+    try {
+      await refreshToken(account.id);
+      toast.success(`Token refreshed for @${account.username}`);
+    } catch {
+      toast.error('Failed to refresh token');
+    } finally {
+      setRefreshingToken(null);
+    }
+  };
+
   // Toggle expanded account to show boards
   const toggleExpanded = (accountId: string) => {
     setExpandedAccount(expandedAccount === accountId ? null : accountId);
@@ -129,6 +146,27 @@ const PinAccountConnect: React.FC = () => {
       return `${(count / 1000).toFixed(1)}K`;
     }
     return count.toLocaleString();
+  };
+
+  // Format token expiry date
+  const formatExpiry = (timestamp: string): string => {
+    try {
+      return format(new Date(timestamp), 'MMM d, yyyy');
+    } catch {
+      return 'Unknown';
+    }
+  };
+
+  // Check token expiry status
+  const getTokenStatus = (timestamp: string): 'ok' | 'expiring' | 'expired' => {
+    try {
+      const daysUntilExpiry = (new Date(timestamp).getTime() - Date.now()) / (1000 * 60 * 60 * 24);
+      if (daysUntilExpiry < 0) return 'expired';
+      if (daysUntilExpiry < 7) return 'expiring';
+      return 'ok';
+    } catch {
+      return 'ok';
+    }
   };
 
   return (
@@ -225,6 +263,7 @@ const PinAccountConnect: React.FC = () => {
             {accounts.map((account) => {
               const accountBoards = getBoardsForAccount(account.id);
               const isExpanded = expandedAccount === account.id;
+              const tokenStatus = getTokenStatus(account.tokenExpiresAt);
 
               return (
                 <Box key={account.id}>
@@ -282,13 +321,35 @@ const PinAccountConnect: React.FC = () => {
                           <Typography variant="body2" color="text.secondary" component="span">
                             {accountBoards.length} boards
                           </Typography>
+                          <Typography
+                            variant="body2"
+                            color={tokenStatus === 'expired' ? 'error.main' : tokenStatus === 'expiring' ? 'warning.main' : 'text.secondary'}
+                            component="span"
+                          >
+                            {tokenStatus === 'expired'
+                              ? `Token expired: ${formatExpiry(account.tokenExpiresAt)}`
+                              : `Token expires: ${formatExpiry(account.tokenExpiresAt)}`}
+                            {tokenStatus === 'expiring' && ' (Expiring soon!)'}
+                          </Typography>
                         </Box>
                       }
                     />
                     <ListItemSecondaryAction>
                       <IconButton
+                        onClick={() => handleRefreshToken(account)}
+                        disabled={refreshingToken === account.id}
+                        title="Refresh token"
+                        sx={{ mr: 0.5 }}
+                      >
+                        {refreshingToken === account.id ? (
+                          <CircularProgress size={20} />
+                        ) : (
+                          <RefreshIcon />
+                        )}
+                      </IconButton>
+                      <IconButton
                         onClick={() => toggleExpanded(account.id)}
-                        sx={{ mr: 1 }}
+                        sx={{ mr: 0.5 }}
                       >
                         {isExpanded ? <ExpandLessIcon /> : <ExpandMoreIcon />}
                       </IconButton>

@@ -154,6 +154,7 @@ export interface ScheduledPost {
   firstComment?: string;
   reelCover?: ReelCover;
   errorMessage?: string;
+  isPinned?: boolean;
   createdAt: string;
   updatedAt: string;
   // Pinterest-specific fields

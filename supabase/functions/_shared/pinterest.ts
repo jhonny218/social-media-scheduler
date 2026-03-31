@@ -278,11 +278,10 @@ export async function createVideoPin(
     board_id: options.boardId,
     media_source: {
       source_type: 'video_id',
-      // For external video URLs, we need to use a different approach
-      // Pinterest requires videos to be uploaded first via media upload endpoint
-      // For now, we'll use the video URL directly if it's already a Pinterest video ID
-      cover_image_url: options.coverImageUrl,
-      media_id: options.videoUrl, // This should be a media_id from prior upload
+      media_id: options.videoUrl,
+      ...(options.coverImageUrl
+        ? { cover_image_url: options.coverImageUrl }
+        : { cover_image_key_frame_time: 1.0 }),
     },
   };
 
@@ -369,13 +368,14 @@ export async function uploadVideo(
 
   const mediaId = registerData.media_id;
   const uploadUrl = registerData.upload_url;
+  const uploadParameters = registerData.upload_parameters;
 
   if (!mediaId || !uploadUrl) {
     throw new Error('Missing media_id or upload_url from register response');
   }
 
-  // Step 2: Upload the video file to the provided URL
-  // Note: This requires fetching the video from the URL and uploading it
+  // Step 2: Upload the video file to the provided URL using multipart/form-data
+  // Pinterest returns upload_parameters that must be included as form fields
   console.log('Fetching video from:', options.videoUrl);
   const videoResponse = await fetch(options.videoUrl);
   if (!videoResponse.ok) {
@@ -385,12 +385,22 @@ export async function uploadVideo(
   const videoBlob = await videoResponse.blob();
   console.log('Uploading video to Pinterest...');
 
+  const formData = new FormData();
+
+  // Add all upload parameters from Pinterest as form fields (must come before the file)
+  if (uploadParameters) {
+    for (const [key, value] of Object.entries(uploadParameters)) {
+      formData.append(key, value as string);
+    }
+  }
+
+  // Add the video file last (S3 requires the file field to be last)
+  formData.append('file', videoBlob, 'video.mp4');
+
   const uploadResponse = await fetch(uploadUrl, {
     method: 'POST',
-    headers: {
-      'Content-Type': videoBlob.type || 'video/mp4',
-    },
-    body: videoBlob,
+    body: formData,
+    // Do NOT set Content-Type header — fetch will auto-set it with the correct boundary
   });
 
   if (!uploadResponse.ok) {

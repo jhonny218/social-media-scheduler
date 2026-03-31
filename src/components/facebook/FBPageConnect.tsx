@@ -31,6 +31,7 @@ import {
   People as FansIcon,
 } from '@mui/icons-material';
 import toast from 'react-hot-toast';
+import { format } from 'date-fns';
 import { useFacebook } from '../../hooks/useFacebook';
 import { FacebookPage } from '../../types';
 
@@ -118,6 +119,27 @@ const FBPageConnect: React.FC = () => {
       return `${(count / 1000).toFixed(1)}K`;
     }
     return count.toLocaleString();
+  };
+
+  // Format token expiry date
+  const formatExpiry = (timestamp: string): string => {
+    try {
+      return format(new Date(timestamp), 'MMM d, yyyy');
+    } catch {
+      return 'Unknown';
+    }
+  };
+
+  // Check token expiry status
+  const getTokenStatus = (timestamp: string): 'ok' | 'expiring' | 'expired' => {
+    try {
+      const daysUntilExpiry = (new Date(timestamp).getTime() - Date.now()) / (1000 * 60 * 60 * 24);
+      if (daysUntilExpiry < 0) return 'expired';
+      if (daysUntilExpiry < 7) return 'expiring';
+      return 'ok';
+    } catch {
+      return 'ok';
+    }
   };
 
   return (
@@ -212,8 +234,10 @@ const FBPageConnect: React.FC = () => {
           </Box>
         ) : (
           <List>
-            {pages.map((page) => (
-              <ListItem
+            {pages.map((page) => {
+              const tokenStatus = page.tokenExpiresAt ? getTokenStatus(page.tokenExpiresAt) : 'ok';
+
+              return (<ListItem
                 key={page.id}
                 sx={{
                   border: '1px solid',
@@ -276,6 +300,18 @@ const FBPageConnect: React.FC = () => {
                           {formatCount(page.followersCount)} followers
                         </Typography>
                       )}
+                      {page.tokenExpiresAt && (
+                        <Typography
+                          variant="body2"
+                          color={tokenStatus === 'expired' ? 'error.main' : tokenStatus === 'expiring' ? 'warning.main' : 'text.secondary'}
+                          component="span"
+                        >
+                          {tokenStatus === 'expired'
+                            ? `Token expired: ${formatExpiry(page.tokenExpiresAt)}`
+                            : `Token expires: ${formatExpiry(page.tokenExpiresAt)}`}
+                          {tokenStatus === 'expiring' && ' (Expiring soon!)'}
+                        </Typography>
+                      )}
                     </Box>
                   }
                 />
@@ -289,7 +325,8 @@ const FBPageConnect: React.FC = () => {
                   </IconButton>
                 </ListItemSecondaryAction>
               </ListItem>
-            ))}
+              );
+            })}
           </List>
         )}
       </Paper>

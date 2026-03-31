@@ -29,6 +29,7 @@ interface InstagramGridViewProps {
   ) => void;
   onPostEdit?: (post: ScheduledPost) => void;
   onPostDelete?: (postId: string) => void;
+  onTogglePin?: (post: ScheduledPost) => void;
   onCreatePost?: () => void;
 }
 
@@ -55,6 +56,7 @@ const InstagramGridView: React.FC<InstagramGridViewProps> = ({
   onPostReorder,
   onPostEdit,
   onPostDelete,
+  onTogglePin,
   onCreatePost,
 }) => {
   const containerRef = useRef<HTMLDivElement>(null);
@@ -105,7 +107,7 @@ const InstagramGridView: React.FC<InstagramGridViewProps> = ({
   const scheduledIndices = useMemo(() => {
     return displayPosts
       .map((post, index) => ({ post, index }))
-      .filter(({ post }) => post.status === 'scheduled' || post.status === 'draft')
+      .filter(({ post }) => (post.status === 'scheduled' || post.status === 'draft') && !post.isPinned)
       .map(({ index }) => index);
   }, [displayPosts]);
 
@@ -423,9 +425,11 @@ const InstagramGridView: React.FC<InstagramGridViewProps> = ({
                 onClick={() => !dragState.isDragging && onPostClick(post)}
                 onEdit={onPostEdit && isScheduled ? () => onPostEdit(post) : undefined}
                 onDelete={onPostDelete && isScheduled ? () => onPostDelete(post.id) : undefined}
+                onTogglePin={onTogglePin && post.platform === 'instagram' ? () => onTogglePin(post) : undefined}
+                isPinned={post.isPinned}
                 isDragging={false}
                 dragHandleProps={
-                  isScheduled
+                  isScheduled && !post.isPinned
                     ? {
                         onMouseDown: (e: React.MouseEvent) => handleDragStart(post.id, index, e),
                         onTouchStart: (e: React.TouchEvent) => handleDragStart(post.id, index, e),

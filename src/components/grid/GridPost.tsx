@@ -11,6 +11,7 @@ import {
   Edit as EditIcon,
   Delete as DeleteIcon,
   DragIndicator as DragIcon,
+  PushPin as PinIcon,
 } from '@mui/icons-material';
 import { ScheduledPost } from '../../types';
 
@@ -24,6 +25,8 @@ interface GridPostProps {
   onClick: () => void;
   onEdit?: () => void;
   onDelete?: () => void;
+  onTogglePin?: () => void;
+  isPinned?: boolean;
   isDragging: boolean;
   dragHandleProps?: DragHandleProps;
   paddingTop?: string;
@@ -34,6 +37,8 @@ const GridPost: React.FC<GridPostProps> = ({
   onClick,
   onEdit,
   onDelete,
+  onTogglePin,
+  isPinned,
   isDragging,
   dragHandleProps,
   paddingTop = '100%',
@@ -152,6 +157,29 @@ const GridPost: React.FC<GridPostProps> = ({
         </Box>
       )}
 
+      {/* Pin Indicator (top left, always visible when pinned) */}
+      {isPinned && (
+        <Box
+          sx={{
+            position: 'absolute',
+            top: 6,
+            left: 6,
+            bgcolor: 'rgba(99, 102, 241, 0.85)',
+            color: 'white',
+            borderRadius: '50%',
+            width: 24,
+            height: 24,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: 2,
+            boxShadow: '0 1px 3px rgba(0,0,0,0.3)',
+          }}
+        >
+          <PinIcon sx={{ fontSize: 14 }} />
+        </Box>
+      )}
+
       {/* Drag Handle (top left, visible on hover for scheduled/draft posts) */}
       {dragHandleProps && isScheduledOrDraft && (
         <Box
@@ -207,51 +235,67 @@ const GridPost: React.FC<GridPostProps> = ({
         }}
       >
         {/* Quick Actions - centered */}
-        {(onEdit || onDelete) && !isInstagramPost && isScheduledOrDraft && (
-          <Box
-            sx={{
-              display: 'flex',
-              gap: 1,
-            }}
-          >
-            {onEdit && (
-              <Tooltip title="Edit">
-                <IconButton
-                  size="small"
-                  sx={{
-                    color: 'white',
-                    bgcolor: 'rgba(0,0,0,0.5)',
-                    '&:hover': { bgcolor: 'rgba(0,0,0,0.7)' },
-                  }}
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    onEdit();
-                  }}
-                >
-                  <EditIcon sx={{ fontSize: 18 }} />
-                </IconButton>
-              </Tooltip>
-            )}
-            {onDelete && (
-              <Tooltip title="Delete">
-                <IconButton
-                  size="small"
-                  sx={{
-                    color: 'white',
-                    bgcolor: 'rgba(0,0,0,0.5)',
-                    '&:hover': { bgcolor: 'rgba(0,0,0,0.7)' },
-                  }}
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    onDelete();
-                  }}
-                >
-                  <DeleteIcon sx={{ fontSize: 18 }} />
-                </IconButton>
-              </Tooltip>
-            )}
-          </Box>
-        )}
+        <Box
+          sx={{
+            display: 'flex',
+            gap: 1,
+          }}
+        >
+          {onTogglePin && (
+            <Tooltip title={isPinned ? "Unpin" : "Pin to top"}>
+              <IconButton
+                size="small"
+                sx={{
+                  color: 'white',
+                  bgcolor: isPinned ? 'rgba(99, 102, 241, 0.7)' : 'rgba(0,0,0,0.5)',
+                  '&:hover': { bgcolor: isPinned ? 'rgba(99, 102, 241, 0.9)' : 'rgba(0,0,0,0.7)' },
+                }}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onTogglePin();
+                }}
+              >
+                <PinIcon sx={{ fontSize: 18 }} />
+              </IconButton>
+            </Tooltip>
+          )}
+          {onEdit && !isInstagramPost && isScheduledOrDraft && (
+            <Tooltip title="Edit">
+              <IconButton
+                size="small"
+                sx={{
+                  color: 'white',
+                  bgcolor: 'rgba(0,0,0,0.5)',
+                  '&:hover': { bgcolor: 'rgba(0,0,0,0.7)' },
+                }}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onEdit();
+                }}
+              >
+                <EditIcon sx={{ fontSize: 18 }} />
+              </IconButton>
+            </Tooltip>
+          )}
+          {onDelete && !isInstagramPost && isScheduledOrDraft && (
+            <Tooltip title="Delete">
+              <IconButton
+                size="small"
+                sx={{
+                  color: 'white',
+                  bgcolor: 'rgba(0,0,0,0.5)',
+                  '&:hover': { bgcolor: 'rgba(0,0,0,0.7)' },
+                }}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onDelete();
+                }}
+              >
+                <DeleteIcon sx={{ fontSize: 18 }} />
+              </IconButton>
+            </Tooltip>
+          )}
+        </Box>
       </Box>
 
     </Box>

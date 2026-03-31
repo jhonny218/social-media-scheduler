@@ -168,15 +168,17 @@ const AccountConnect: React.FC = () => {
     }
   };
 
-  // Check if token is expired or expiring soon
-  const isTokenExpiringSoon = (timestamp: unknown): boolean => {
+  // Check token expiry status
+  const getTokenStatus = (timestamp: unknown): 'ok' | 'expiring' | 'expired' => {
     try {
       const maybe = timestamp as { toDate?: () => Date };
       const date = maybe?.toDate ? maybe.toDate() : new Date(String(timestamp));
       const daysUntilExpiry = (date.getTime() - Date.now()) / (1000 * 60 * 60 * 24);
-      return daysUntilExpiry < 7;
+      if (daysUntilExpiry < 0) return 'expired';
+      if (daysUntilExpiry < 7) return 'expiring';
+      return 'ok';
     } catch {
-      return false;
+      return 'ok';
     }
   };
 
@@ -285,7 +287,7 @@ const AccountConnect: React.FC = () => {
         ) : (
           <List>
             {accounts.map((account) => {
-              const expiringSoon = isTokenExpiringSoon(account.tokenExpiresAt);
+              const tokenStatus = getTokenStatus(account.tokenExpiresAt);
 
               return (
                 <ListItem
@@ -344,12 +346,14 @@ const AccountConnect: React.FC = () => {
                         </Typography>
                         <Typography
                           variant="body2"
-                          color={expiringSoon ? 'warning.main' : 'text.secondary'}
+                          color={tokenStatus === 'expired' ? 'error.main' : tokenStatus === 'expiring' ? 'warning.main' : 'text.secondary'}
                           component="span"
                           sx={{ ml: 2 }}
                         >
-                          Token expires: {formatExpiry(account.tokenExpiresAt)}
-                          {expiringSoon && ' (Expiring soon!)'}
+                          {tokenStatus === 'expired'
+                            ? `Token expired: ${formatExpiry(account.tokenExpiresAt)}`
+                            : `Token expires: ${formatExpiry(account.tokenExpiresAt)}`}
+                          {tokenStatus === 'expiring' && ' (Expiring soon!)'}
                         </Typography>
                       </Box>
                     }

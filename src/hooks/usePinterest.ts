@@ -10,6 +10,7 @@ interface UsePinterestReturn {
   error: string | null;
   connectAccount: (authorizationCode: string) => Promise<void>;
   disconnectAccount: (accountId: string) => Promise<void>;
+  refreshToken: (accountId: string) => Promise<void>;
   getAuthUrl: () => string;
   refreshAccounts: () => void;
   getBoardsForAccount: (accountId: string) => PinterestBoard[];
@@ -259,6 +260,27 @@ export const usePinterest = (): UsePinterestReturn => {
     }
   }, [user?.id]);
 
+  // Refresh Pinterest token for an account
+  const refreshToken = useCallback(async (accountId: string): Promise<void> => {
+    if (!user?.id) {
+      throw new Error('User must be authenticated');
+    }
+
+    try {
+      const { data, error: funcError } = await supabase.functions.invoke('refresh-pinterest-token', {
+        body: { accountId },
+      });
+
+      if (funcError || !data?.success) {
+        throw new Error(data?.error || funcError?.message || 'Failed to refresh token');
+      }
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Failed to refresh token';
+      setError(message);
+      throw err;
+    }
+  }, [user?.id]);
+
   // Get boards for a specific account
   const getBoardsForAccount = useCallback((accountId: string): PinterestBoard[] => {
     return boards.filter(b => b.accountId === accountId);
@@ -276,6 +298,7 @@ export const usePinterest = (): UsePinterestReturn => {
     error,
     connectAccount,
     disconnectAccount,
+    refreshToken,
     getAuthUrl,
     refreshAccounts,
     getBoardsForAccount,

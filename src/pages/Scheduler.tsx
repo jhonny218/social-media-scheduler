@@ -159,6 +159,7 @@ const Scheduler: React.FC = () => {
     calendarEvents,
     loading,
     deletePost,
+    togglePinPost,
     refreshPosts,
   } = usePosts({
     status: selectedStatus === 'all' ? undefined : selectedStatus,
@@ -240,6 +241,15 @@ const Scheduler: React.FC = () => {
     }
     setDeleteDialog({ open: true, postId });
   }, [posts]);
+
+  // Handle pin toggle
+  const handleTogglePin = useCallback(async (post: ScheduledPost) => {
+    try {
+      await togglePinPost(post.id, post.accountId);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Failed to toggle pin');
+    }
+  }, [togglePinPost]);
 
   const handleDeleteCancel = () => {
     setDeleteDialog({ open: false, postId: null });
@@ -534,6 +544,7 @@ const Scheduler: React.FC = () => {
           onPostReorder={handlePostReorder}
           onPostEdit={handleEditPost}
           onPostDelete={handleDeleteClick}
+          onTogglePin={handleTogglePin}
           onCreatePost={() => setComposerOpen(true)}
         />
       ) : (

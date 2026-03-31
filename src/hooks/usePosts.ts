@@ -19,6 +19,7 @@ interface UsePostsReturn {
   createPost: (input: PostInput) => Promise<string>;
   updatePost: (postId: string, updates: Partial<ScheduledPost>) => Promise<void>;
   deletePost: (postId: string) => Promise<void>;
+  togglePinPost: (postId: string, accountId: string) => Promise<void>;
   getPostById: (postId: string) => ScheduledPost | undefined;
   refreshPosts: () => void;
 }
@@ -42,6 +43,7 @@ interface PostRow {
   first_comment: string | null;
   reel_cover: { type: 'frame' | 'custom'; storagePath: string; timestamp?: number } | null;
   error_message: string | null;
+  is_pinned: boolean;
   created_at: string;
   updated_at: string;
 }
@@ -115,6 +117,7 @@ const dbRowToPost = (row: PostRow): ScheduledPost => ({
   publishedAt: row.published_at || undefined,
   firstComment: row.first_comment || undefined,
   errorMessage: row.error_message || undefined,
+  isPinned: row.is_pinned ?? false,
   createdAt: row.created_at,
   updatedAt: row.updated_at,
 });
@@ -327,6 +330,7 @@ export const usePosts = (options: UsePostsOptions = {}): UsePostsReturn => {
       if (updates.status) updateData.status = updates.status;
       if (updates.firstComment !== undefined) updateData.first_comment = updates.firstComment;
       if (updates.postType) updateData.post_type = updates.postType;
+      if (updates.isPinned !== undefined) (updateData as Record<string, unknown>).is_pinned = updates.isPinned;
 
       const { error: updateError } = await supabase
         .from(TABLES.SCHEDULED_POSTS)
@@ -369,6 +373,34 @@ export const usePosts = (options: UsePostsOptions = {}): UsePostsReturn => {
     }
   };
 
+  // Toggle pin status on a post (max 3 per account)
+  const togglePinPost = async (postId: string, accountId: string): Promise<void> => {
+    if (!user?.id) {
+      throw new Error('User must be authenticated');
+    }
+
+    const post = posts.find(p => p.id === postId);
+    if (!post) throw new Error('Post not found');
+
+    const currentlyPinned = post.isPinned ?? false;
+
+    if (!currentlyPinned) {
+      // Check pin count for this account
+      const { count, error: countError } = await supabase
+        .from(TABLES.SCHEDULED_POSTS)
+        .select('id', { count: 'exact', head: true })
+        .eq('account_id', accountId)
+        .eq('is_pinned', true);
+
+      if (countError) throw countError;
+      if ((count ?? 0) >= 3) {
+        throw new Error('Maximum 3 pinned posts per account');
+      }
+    }
+
+    await updatePost(postId, { isPinned: !currentlyPinned });
+  };
+
   // Get a specific post by ID
   const getPostById = useCallback(
     (postId: string): ScheduledPost | undefined => {
@@ -385,6 +417,7 @@ export const usePosts = (options: UsePostsOptions = {}): UsePostsReturn => {
     createPost,
     updatePost,
     deletePost,
+    togglePinPost,
     getPostById,
     refreshPosts,
   };

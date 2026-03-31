@@ -19,6 +19,11 @@ export const getScheduledDate = (post: ScheduledPost): Date => {
  */
 export const sortPostsByScheduledTime = (posts: ScheduledPost[]): ScheduledPost[] => {
   return [...posts].sort((a, b) => {
+    // Pinned posts come first
+    const pinnedA = a.isPinned ? 1 : 0;
+    const pinnedB = b.isPinned ? 1 : 0;
+    if (pinnedA !== pinnedB) return pinnedB - pinnedA;
+
     const dateA = getScheduledDate(a);
     const dateB = getScheduledDate(b);
     return dateB.getTime() - dateA.getTime(); // Descending order (newest first)
