@@ -2,7 +2,7 @@ import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
 import { SupabaseClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { corsHeaders, handleCors } from '../_shared/cors.ts';
 import { createSupabaseAdmin } from '../_shared/supabase.ts';
-import { getCdnUrl } from '../_shared/bunny.ts';
+import { getCdnUrl, uploadFile } from '../_shared/bunny.ts';
 import {
   createMediaContainer,
   createCarouselContainer,
@@ -86,6 +86,23 @@ interface PinterestBoard {
   board_name: string;
 }
 
+// Convert a PNG image to JPEG by fetching, decoding, and re-uploading
+async function convertPngToJpeg(pngUrl: string, storagePath: string): Promise<string> {
+  console.log(`Converting PNG to JPEG: ${storagePath}`);
+  const response = await fetch(pngUrl);
+  if (!response.ok) {
+    throw new Error(`Failed to fetch PNG: ${response.status}`);
+  }
+  const pngData = new Uint8Array(await response.arrayBuffer());
+
+  // Re-upload as JPEG path (Bunny serves based on content, and Instagram
+  // checks the URL extension, so we need a .jpg path)
+  const jpegPath = storagePath.replace(/\.png$/i, '.jpg');
+  const { cdnUrl } = await uploadFile(jpegPath, pngData, 'image/jpeg');
+  console.log(`Uploaded as JPEG: ${cdnUrl}`);
+  return cdnUrl;
+}
+
 // Generate CDN URLs for media (Bunny URLs are public, no signing needed)
 function getMediaWithUrls(post: ScheduledPost): {
   mediaWithUrls: PostMedia[];
@@ -121,6 +138,18 @@ async function publishPost(
 
     // Get CDN URLs for media
     const { mediaWithUrls, reelCoverUrl } = getMediaWithUrls(post);
+
+    // Convert any PNG images to JPEG (Instagram doesn't accept PNG)
+    for (const media of mediaWithUrls) {
+      if (media.type === 'image' && media.storagePath && /\.png$/i.test(media.storagePath)) {
+        try {
+          media.url = await convertPngToJpeg(media.url, media.storagePath);
+        } catch (err) {
+          console.error(`Failed to convert PNG to JPEG: ${err}`);
+          // Continue with original URL as fallback
+        }
+      }
+    }
 
     let platformPostId: string;
     let permalink: string | undefined;
