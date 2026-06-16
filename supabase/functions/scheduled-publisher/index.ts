@@ -57,7 +57,24 @@ interface ScheduledPost {
   pin_board_id?: string;
   pin_link?: string;
   pin_alt_text?: string;
+  status: 'draft' | 'scheduled' | 'publishing' | 'published' | 'failed';
+  updated_at: string;
 }
+
+// Supabase Edge Functions have a wall-clock execution limit (~150s by default).
+// Cap media-processing polls below that so a slow video makes waitForMediaReady
+// throw — letting the catch block mark the post 'failed' with a clear message —
+// instead of the function being killed mid-wait and orphaning the row in
+// 'publishing'. Override with MEDIA_PROCESSING_TIMEOUT_MS if your plan allows longer.
+const MEDIA_PROCESSING_TIMEOUT_MS =
+  Number(Deno.env.get('MEDIA_PROCESSING_TIMEOUT_MS')) || 110000;
+
+// A post that has been in 'publishing' longer than this was almost certainly
+// orphaned by an invocation that died before reaching the published/failed
+// update (the cron only re-queries 'scheduled' posts, so nothing else recovers
+// it). Must comfortably exceed the longest legitimate publish so we never fail
+// a post that a concurrent invocation is still actively publishing.
+const STALE_PUBLISHING_THRESHOLD_MS = 10 * 60 * 1000; // 10 minutes
 
 interface InstagramAccount {
   id: string;
@@ -233,7 +250,7 @@ async function publishPost(
       );
 
       // Wait for video processing
-      await waitForMediaReady(reelContainer.id, account.access_token);
+      await waitForMediaReady(reelContainer.id, account.access_token, MEDIA_PROCESSING_TIMEOUT_MS);
 
       // Publish reel
       const result = await publishMedia(
@@ -263,7 +280,7 @@ async function publishPost(
 
       // Wait for processing if video
       if (media.type === 'video') {
-        await waitForMediaReady(container.id, account.access_token);
+        await waitForMediaReady(container.id, account.access_token, MEDIA_PROCESSING_TIMEOUT_MS);
       }
 
       // Add delay for image posts - Instagram needs time to fetch and process the image
@@ -532,13 +549,24 @@ serve(async (req: Request) => {
   try {
     const supabaseAdmin = createSupabaseAdmin();
 
-    // Find posts that are due for publishing
-    // Status is 'scheduled' and scheduled_time is in the past (or now)
+    // Find posts to process, either:
+    //  - 'scheduled' and due (scheduled_time in the past or now), or
+    //  - 'publishing' but stale, i.e. orphaned by a previous invocation that
+    //    died before it could write the published/failed status (recovery).
+    const nowIso = new Date().toISOString();
+    const stalePublishingBefore = new Date(
+      Date.now() - STALE_PUBLISHING_THRESHOLD_MS
+    ).toISOString();
+
     const { data: duePosts, error: fetchError } = await supabaseAdmin
       .from('sch_scheduled_posts')
       .select('*')
-      .eq('status', 'scheduled')
-      .lte('scheduled_time', new Date().toISOString())
+      // Timestamps are double-quoted because they contain PostgREST-reserved
+      // characters (':' and '.') that would otherwise break the filter parse.
+      .or(
+        `and(status.eq.scheduled,scheduled_time.lte."${nowIso}"),` +
+          `and(status.eq.publishing,updated_at.lte."${stalePublishingBefore}")`
+      )
       .order('scheduled_time', { ascending: true })
       .limit(10); // Process up to 10 posts per invocation to avoid timeout
 
@@ -559,6 +587,33 @@ serve(async (req: Request) => {
 
     for (const post of duePosts as ScheduledPost[]) {
       const platform = post.platform || 'instagram'; // Default to Instagram for backwards compatibility
+
+      // Recover posts orphaned in 'publishing' by an invocation that was killed
+      // (e.g. the edge-runtime wall-clock limit during media processing) before
+      // it could finish. We can't safely know whether the platform actually
+      // published, so mark them failed for the user to review/retry rather than
+      // risk creating a duplicate post.
+      if (post.status === 'publishing') {
+        console.warn(
+          `Recovering stale publishing post ${post.id} (last updated ${post.updated_at})`
+        );
+        await supabaseAdmin
+          .from('sch_scheduled_posts')
+          .update({
+            status: 'failed',
+            error_message:
+              'Publishing was interrupted (likely a timeout during media processing) and did not complete. Check the platform before retrying to avoid a duplicate post.',
+            updated_at: new Date().toISOString(),
+          })
+          .eq('id', post.id);
+        results.push({
+          postId: post.id,
+          success: false,
+          error: 'Recovered stale publishing post',
+        });
+        continue;
+      }
+
       console.log(`Processing ${platform} post ${post.id}`);
 
       if (platform === 'pinterest') {
