@@ -183,6 +183,7 @@ Deploy required functions used by the app, including:
 - `scheduled-publisher`
 - `refresh-instagram-token`
 - `refresh-pinterest-token`
+- `refresh-all-tokens` (run by cron; sweeps every connected account)
 - `get-account-insights`
 - `get-facebook-insights`
 - `get-post-insights`
