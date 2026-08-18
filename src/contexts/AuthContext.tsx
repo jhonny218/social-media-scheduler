@@ -7,6 +7,7 @@ interface AuthContextType extends AuthState {
   signIn: (email: string, password: string) => Promise<void>;
   signUp: (email: string, password: string, displayName: string) => Promise<void>;
   signOut: () => Promise<void>;
+  changePassword: (newPassword: string) => Promise<void>;
   updateUserProfile: (data: Partial<UserInput>) => Promise<void>;
   updateUserPreferences: (preferences: Partial<UserPreferences>) => Promise<void>;
   refreshUser: () => Promise<void>;
@@ -370,6 +371,24 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     }
   };
 
+  // Change the password of the signed-in user. Supabase treats a live session
+  // as sufficient authorization, so no current-password check is made here.
+  const changePassword = async (newPassword: string): Promise<void> => {
+    if (!state.user) {
+      throw new Error('No authenticated user');
+    }
+
+    const { error } = await withTimeout(
+      supabase.auth.updateUser({ password: newPassword }),
+      AUTH_TIMEOUT,
+      'Password update timed out'
+    );
+
+    if (error) {
+      throw error;
+    }
+  };
+
   // Update user profile
   const updateUserProfile = async (data: Partial<UserInput>): Promise<void> => {
     if (!state.user) {
@@ -462,6 +481,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     signIn,
     signUp,
     signOut,
+    changePassword,
     updateUserProfile,
     updateUserPreferences,
     refreshUser,

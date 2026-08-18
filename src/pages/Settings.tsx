@@ -28,6 +28,7 @@ import {
 import { useForm, Controller } from 'react-hook-form';
 import toast from 'react-hot-toast';
 import { useAuth } from '../hooks/useAuth';
+import ChangePasswordForm from '../components/auth/ChangePasswordForm';
 import AccountConnect from '../components/instagram/AccountConnect';
 import FBPageConnect from '../components/facebook/FBPageConnect';
 import PinAccountConnect from '../components/pinterest/PinAccountConnect';
@@ -249,6 +250,10 @@ const Settings: React.FC = () => {
                 {saving ? <CircularProgress size={24} /> : 'Save Changes'}
               </Button>
             </Box>
+
+            <Divider sx={{ my: 4 }} />
+
+            <ChangePasswordForm />
           </TabPanel>
 
           {/* Instagram Tab */}
