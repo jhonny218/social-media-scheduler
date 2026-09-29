@@ -99,7 +99,16 @@ export async function createMediaContainer(
     }
 
     if (data.error) {
-      throw new Error(data.error.message || 'Failed to create media container');
+      // Keep the numeric code and subcode: Instagram reports deprecations as a
+      // bare "Invalid parameter", and the subcode is the only thing that says
+      // which parameter (e.g. 2207067 = media_type=VIDEO is no longer accepted).
+      const { message, code, error_subcode: subcode } = data.error;
+      const details = [
+        code !== undefined ? `code ${code}` : null,
+        subcode !== undefined ? `subcode ${subcode}` : null,
+      ].filter(Boolean).join(', ');
+      const base = message || 'Failed to create media container';
+      throw new Error(details ? `${base} (${details})` : base);
     }
 
     if (!data.id) {

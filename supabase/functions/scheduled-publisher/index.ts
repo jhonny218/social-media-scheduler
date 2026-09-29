@@ -274,7 +274,12 @@ async function publishPost(
           imageUrl: media.type === 'image' ? media.url : undefined,
           videoUrl: media.type === 'video' ? media.url : undefined,
           caption: post.caption || undefined,
-          mediaType: media.type === 'video' ? 'VIDEO' : undefined,
+          // Instagram retired standalone video feed containers: media_type=VIDEO
+          // now returns "Invalid parameter" (code 100, subcode 2207067). A single
+          // video posted to the feed has to go through REELS, and Instagram
+          // surfaces it as a reel. Carousel video children still use VIDEO — do
+          // not change those.
+          mediaType: media.type === 'video' ? 'REELS' : undefined,
         }
       );
 
