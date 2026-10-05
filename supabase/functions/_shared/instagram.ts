@@ -18,6 +18,30 @@ export interface PublishResult {
   permalink?: string;
 }
 
+// Build an Error that keeps Instagram's numeric code and subcode. Instagram
+// reports distinct problems behind identical prose ("Invalid parameter",
+// "Only photo or video can be accepted as media type"), so the subcode is the
+// only reliable signal — both for a human reading error_message in the UI and
+// for withRetry deciding whether a failure is worth retrying.
+function graphError(
+  error: { message?: string; code?: number; error_subcode?: number },
+  fallback: string
+): Error {
+  const details = [
+    error.code !== undefined ? `code ${error.code}` : null,
+    error.error_subcode !== undefined ? `subcode ${error.error_subcode}` : null,
+  ].filter(Boolean).join(', ');
+  const base = error.message || fallback;
+  return new Error(details ? `${base} (${details})` : base);
+}
+
+// Instagram error subcodes that look permanent but aren't. Verified by hand
+// against a live account: the identical image URL failed and then succeeded
+// repeatedly within the same minute.
+//   2207052 - "Only photo or video can be accepted as media type"
+//   2207003 - media fetch / download failure on Instagram's side
+const TRANSIENT_MEDIA_SUBCODES = [2207052, 2207003];
+
 // Retry helper for transient Instagram API errors
 async function withRetry<T>(
   fn: () => Promise<T>,
@@ -31,7 +55,13 @@ async function withRetry<T>(
     } catch (err) {
       lastError = err instanceof Error ? err : new Error(String(err));
       const isTransient = lastError.message.includes('unexpected error')
-        || lastError.message.includes('Please retry');
+        || lastError.message.includes('Please retry')
+        // Instagram's media ingestion is intermittently unreliable: the same
+        // image URL is rejected with "Only photo or video can be accepted as
+        // media type" (subcode 2207052) on one call and accepted seconds later.
+        // These read as permanent format errors but are not, and without
+        // retrying them a single flaky response kills an entire carousel.
+        || TRANSIENT_MEDIA_SUBCODES.some((sub) => lastError!.message.includes(`subcode ${sub}`));
       if (!isTransient || attempt === maxRetries) {
         throw lastError;
       }
@@ -99,16 +129,7 @@ export async function createMediaContainer(
     }
 
     if (data.error) {
-      // Keep the numeric code and subcode: Instagram reports deprecations as a
-      // bare "Invalid parameter", and the subcode is the only thing that says
-      // which parameter (e.g. 2207067 = media_type=VIDEO is no longer accepted).
-      const { message, code, error_subcode: subcode } = data.error;
-      const details = [
-        code !== undefined ? `code ${code}` : null,
-        subcode !== undefined ? `subcode ${subcode}` : null,
-      ].filter(Boolean).join(', ');
-      const base = message || 'Failed to create media container';
-      throw new Error(details ? `${base} (${details})` : base);
+      throw graphError(data.error, 'Failed to create media container');
     }
 
     if (!data.id) {
@@ -156,7 +177,7 @@ export async function createCarouselContainer(
     }
 
     if (data.error) {
-      throw new Error(data.error.message || 'Failed to create carousel container');
+      throw graphError(data.error, 'Failed to create carousel container');
     }
 
     if (!data.id) {
@@ -198,6 +219,12 @@ export async function checkMediaStatus(
 }
 
 // Wait for media container to be ready (for videos)
+//
+// ERROR is NOT terminal. Instagram reports status_code=ERROR partway through
+// processing a perfectly valid video and then flips it to FINISHED moments
+// later. Treating the first ERROR as fatal failed real posts that Instagram
+// went on to process successfully, so we poll through ERROR and only give up
+// when the timeout expires with the container still not FINISHED.
 export async function waitForMediaReady(
   containerId: string,
   accessToken: string,
@@ -206,23 +233,45 @@ export async function waitForMediaReady(
   const startTime = Date.now();
   const pollInterval = 5000; // 5 seconds
 
+  let lastStatus = 'UNKNOWN';
+  let lastErrorMessage: string | undefined;
+  let sawError = false;
+
   while (Date.now() - startTime < maxWaitMs) {
     const { status, errorMessage } = await checkMediaStatus(containerId, accessToken);
+    lastStatus = status;
 
     if (status === 'FINISHED') {
+      if (sawError) {
+        console.log(
+          `Container ${containerId} reported ERROR earlier but finished after ` +
+            `${Math.round((Date.now() - startTime) / 1000)}s`
+        );
+      }
       return;
     }
+
     if (status === 'ERROR') {
-      const detail = errorMessage ? `: ${errorMessage}` : '';
-      throw new Error(`Media processing failed${detail}`);
+      sawError = true;
+      lastErrorMessage = errorMessage;
     }
 
     console.log(`Container ${containerId} status: ${status}, waiting...`);
-    // Wait before polling again
     await new Promise((resolve) => setTimeout(resolve, pollInterval));
   }
 
-  throw new Error('Timeout waiting for media to process');
+  // Timed out. Say which it was, so a genuinely broken video is
+  // distinguishable from one Instagram never got around to finishing.
+  const waited = Math.round(maxWaitMs / 1000);
+  if (sawError) {
+    const detail = lastErrorMessage && lastErrorMessage !== 'ERROR' ? `: ${lastErrorMessage}` : '';
+    throw new Error(
+      `Media processing still reporting ERROR after ${waited}s${detail} (container ${containerId})`
+    );
+  }
+  throw new Error(
+    `Timeout waiting for media to process after ${waited}s, last status ${lastStatus} (container ${containerId})`
+  );
 }
 
 // Publish a media container
