@@ -57,6 +57,18 @@ const PostDetailsModal: React.FC<PostDetailsModalProps> = ({
   const statusColor = getStatusBorderColor(post.status);
   const scheduledDate = getScheduledDate(post);
   const isPublished = post.status === 'published';
+
+  // `publishedAt` is the only record of when a post actually went out.
+  // `scheduledTime` can still be moved after the fact, so rendering it under a
+  // "Published on" label claimed publish dates that never happened — a post
+  // that went out on the 26th read as "Published on Wednesday, October 28".
+  // Fall back to the scheduled date only with the honest label.
+  const parsedPublishedAt = post.publishedAt ? new Date(post.publishedAt) : null;
+  const publishedDate =
+    isPublished && parsedPublishedAt && !isNaN(parsedPublishedAt.getTime())
+      ? parsedPublishedAt
+      : null;
+  const displayDate = publishedDate ?? scheduledDate;
   const isInstagramPost = post.id.startsWith('ig_'); // Posts fetched from Instagram API
   const mediaCount = post.media?.length || 0;
 
@@ -375,14 +387,14 @@ const PostDetailsModal: React.FC<PostDetailsModalProps> = ({
             <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
               <ScheduleIcon fontSize="small" color="action" />
               <Typography variant="subtitle2" color="text.secondary">
-                {isPublished ? 'Published on' : 'Scheduled for'}
+                {publishedDate ? 'Published on' : 'Scheduled for'}
               </Typography>
             </Box>
             <Typography variant="body1" fontWeight={500}>
-              {format(scheduledDate, 'EEEE, MMMM d, yyyy')}
+              {format(displayDate, 'EEEE, MMMM d, yyyy')}
             </Typography>
             <Typography variant="body1" color="text.secondary">
-              {format(scheduledDate, 'h:mm a')}
+              {format(displayDate, 'h:mm a')}
             </Typography>
 
             {/* Error Message */}
