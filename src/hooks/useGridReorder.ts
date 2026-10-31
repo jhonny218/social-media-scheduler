@@ -76,18 +76,29 @@ export const useGridReorder = (userId: string): UseGridReorderReturn => {
           destinationIndex
         );
 
-        // Update in database
-        const { error } = await supabase
+        // Update in database. The caller already filters to scheduled/draft
+        // posts, but that check is against in-memory state that can be minutes
+        // stale — the post may have published while the grid was open. Re-check
+        // the status server-side so a drag can't move the date of a post that
+        // has already gone out.
+        const { data, error } = await supabase
           .from(TABLES.SCHEDULED_POSTS)
           .update({
             scheduled_time: newScheduledTime.toISOString(),
             updated_at: new Date().toISOString(),
           })
           .eq('id', postId)
-          .eq('user_id', userId);
+          .eq('user_id', userId)
+          .neq('status', 'published')
+          .neq('status', 'publishing')
+          .select('id');
 
         if (error) {
           throw error;
+        }
+
+        if (!data || data.length === 0) {
+          throw new Error('This post has already been published and cannot be reordered.');
         }
 
         // Create updated post
@@ -104,7 +115,7 @@ export const useGridReorder = (userId: string): UseGridReorderReturn => {
         return sortPostsByScheduledTime(newPosts);
       } catch (error) {
         console.error('Error reordering post:', error);
-        toast.error('Failed to reorder post');
+        toast.error(error instanceof Error ? error.message : 'Failed to reorder post');
         return posts; // Return original order on failure
       } finally {
         setIsReordering(false);

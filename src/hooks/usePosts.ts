@@ -332,14 +332,37 @@ export const usePosts = (options: UsePostsOptions = {}): UsePostsReturn => {
       if (updates.postType) updateData.post_type = updates.postType;
       if (updates.isPinned !== undefined) (updateData as Record<string, unknown>).is_pinned = updates.isPinned;
 
-      const { error: updateError } = await supabase
+      // See posts.service.ts: rescheduling an already-published (or in-flight)
+      // post leaves it advertising a date the publisher cron will never act on,
+      // because the cron only selects rows with status 'scheduled'.
+      // Mirrors the DB trigger in migration 007: an update that also moves status
+      // out of published/publishing is an explicit re-queue, and stays allowed.
+      const isRequeue =
+        updateData.status !== undefined &&
+        updateData.status !== 'published' &&
+        updateData.status !== 'publishing';
+      const isRescheduling = updateData.scheduled_time !== undefined && !isRequeue;
+
+      let query = supabase
         .from(TABLES.SCHEDULED_POSTS)
         .update(updateData)
         .eq('id', postId)
         .eq('user_id', user.id);
 
+      if (isRescheduling) {
+        query = query.neq('status', 'published').neq('status', 'publishing');
+      }
+
+      const { data, error: updateError } = await query.select('id');
+
       if (updateError) {
         throw updateError;
+      }
+
+      if (isRescheduling && (!data || data.length === 0)) {
+        throw new Error(
+          'Cannot reschedule a post that has already been published or is currently publishing.'
+        );
       }
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Failed to update post';

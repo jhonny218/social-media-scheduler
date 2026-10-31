@@ -273,14 +273,40 @@ export class PostsService {
     if (updates.pinLink !== undefined) updateData.pin_link = updates.pinLink || null;
     if (updates.pinAltText !== undefined) updateData.pin_alt_text = updates.pinAltText || null;
 
-    const { error } = await supabase
+    // Moving scheduled_time on a post that has already gone out (or is mid-flight)
+    // only rewrites history: the publisher cron exclusively picks up rows with
+    // status 'scheduled', so the row keeps a future date it will never act on and
+    // the UI reports a publish that never happened. Filter on the old status
+    // server-side rather than reading it first, so a publish that lands between
+    // the read and the write can't slip through.
+    // Mirrors the DB trigger in migration 007: an update that also moves status
+    // out of published/publishing is an explicit re-queue, and stays allowed.
+    const isRequeue =
+      updateData.status !== undefined &&
+      updateData.status !== 'published' &&
+      updateData.status !== 'publishing';
+    const isRescheduling = updateData.scheduled_time !== undefined && !isRequeue;
+
+    let query = supabase
       .from(TABLES.SCHEDULED_POSTS)
       .update(updateData)
       .eq('id', postId)
       .eq('user_id', this.userId);
 
+    if (isRescheduling) {
+      query = query.neq('status', 'published').neq('status', 'publishing');
+    }
+
+    const { data, error } = await query.select('id');
+
     if (error) {
       throw new Error(`Failed to update post: ${error.message}`);
+    }
+
+    if (isRescheduling && (!data || data.length === 0)) {
+      throw new Error(
+        'Cannot reschedule a post that has already been published or is currently publishing.'
+      );
     }
   }
 
