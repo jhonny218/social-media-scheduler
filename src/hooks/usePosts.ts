@@ -44,6 +44,9 @@ interface PostRow {
   reel_cover: { type: 'frame' | 'custom'; storagePath: string; timestamp?: number } | null;
   error_message: string | null;
   is_pinned: boolean;
+  pin_board_id?: string | null;
+  pin_link?: string | null;
+  pin_alt_text?: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -120,6 +123,10 @@ const dbRowToPost = (row: PostRow): ScheduledPost => ({
   isPinned: row.is_pinned ?? false,
   createdAt: row.created_at,
   updatedAt: row.updated_at,
+  // Pinterest-specific fields (the details modal needs the board to allow Schedule)
+  pinBoardId: row.pin_board_id || undefined,
+  pinLink: row.pin_link || undefined,
+  pinAltText: row.pin_alt_text || undefined,
 });
 
 export const usePosts = (options: UsePostsOptions = {}): UsePostsReturn => {

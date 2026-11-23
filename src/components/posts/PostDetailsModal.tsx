@@ -12,6 +12,7 @@ import {
   Divider,
   Avatar,
   Grid,
+  Tooltip,
 } from '@mui/material';
 import {
   Close as CloseIcon,
@@ -32,6 +33,7 @@ import {
 import { format } from 'date-fns';
 import { ScheduledPost, PostStatus, PostType } from '../../types';
 import { getStatusBorderColor, getScheduledDate } from '../../utils/gridHelpers';
+import { canSchedule } from '../../utils/schedule-draft';
 
 interface PostDetailsModalProps {
   post: ScheduledPost | null;
@@ -40,6 +42,7 @@ interface PostDetailsModalProps {
   onEdit?: (post: ScheduledPost) => void;
   onDelete?: (postId: string) => void;
   onDuplicate?: (post: ScheduledPost) => void;
+  onScheduleDraft?: (post: ScheduledPost) => void;
   accountUsername?: string;
 }
 
@@ -50,6 +53,7 @@ const PostDetailsModal: React.FC<PostDetailsModalProps> = ({
   onEdit,
   onDelete,
   onDuplicate,
+  onScheduleDraft,
   accountUsername,
 }) => {
   if (!post) return null;
@@ -71,6 +75,7 @@ const PostDetailsModal: React.FC<PostDetailsModalProps> = ({
   const displayDate = publishedDate ?? scheduledDate;
   const isInstagramPost = post.id.startsWith('ig_'); // Posts fetched from Instagram API
   const mediaCount = post.media?.length || 0;
+  const scheduleCheck = canSchedule(post, new Date());
 
   const getStatusIcon = (status: PostStatus) => {
     switch (status) {
@@ -443,6 +448,23 @@ const PostDetailsModal: React.FC<PostDetailsModalProps> = ({
               >
                 Duplicate
               </Button>
+            )}
+
+            {onScheduleDraft && post.status === 'draft' && !isInstagramPost && (
+              <Tooltip title={scheduleCheck.ok ? '' : scheduleCheck.reason}>
+                {/* span so the tooltip still shows on a disabled button */}
+                <span>
+                  <Button
+                    variant="contained"
+                    color="success"
+                    startIcon={<ScheduleIcon />}
+                    disabled={!scheduleCheck.ok}
+                    onClick={() => onScheduleDraft(post)}
+                  >
+                    Schedule
+                  </Button>
+                </span>
+              </Tooltip>
             )}
 
             {onEdit && !isPublished && !isInstagramPost && (

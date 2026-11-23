@@ -242,6 +242,23 @@ const Scheduler: React.FC = () => {
     setDeleteDialog({ open: true, postId });
   }, [posts]);
 
+  // Handle Schedule on a draft: hand it to the publisher, then refresh the list
+  const handleScheduleDraft = useCallback(async (post: ScheduledPost) => {
+    if (!user?.uid) return;
+    try {
+      const { PostsService } = await import('../services/posts.service');
+      await new PostsService(user.uid).scheduleDraft(post.id);
+      toast.success('Post scheduled');
+      setDetailsModalOpen(false);
+      setDetailsModalPost(null);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Failed to schedule post');
+    } finally {
+      // Refresh either way: a failure usually means the post changed under us.
+      refreshPosts();
+    }
+  }, [user?.uid, refreshPosts]);
+
   // Handle pin toggle
   const handleTogglePin = useCallback(async (post: ScheduledPost) => {
     try {
@@ -612,6 +629,7 @@ const Scheduler: React.FC = () => {
         onEdit={handleEditPost}
         onDelete={handleDeleteClick}
         onDuplicate={handleDuplicatePost}
+        onScheduleDraft={handleScheduleDraft}
         accountUsername={
           detailsModalPost ? getAccountUsername(detailsModalPost.accountId) : undefined
         }
