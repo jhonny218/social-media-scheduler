@@ -2,6 +2,7 @@ import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
 import { corsHeaders, handleCors } from '../_shared/cors.ts';
 import { createSupabaseAdmin, getUserFromRequest } from '../_shared/supabase.ts';
 import { getUserProfile, getUserBoards } from '../_shared/pinterest.ts';
+import { syncBoards, type BoardSyncClient } from '../_shared/pin-boards.ts';
 
 const PINTEREST_OAUTH_URL = 'https://api.pinterest.com/v5/oauth/token';
 
@@ -145,35 +146,12 @@ serve(async (req: Request) => {
       accountId = insertedAccount.id;
     }
 
-    // Step 5: Sync boards
-    // First, delete existing boards for this account (they'll be re-added)
-    await supabaseAdmin
-      .from('pin_boards')
-      .delete()
-      .eq('account_id', accountId);
-
-    // Insert fresh boards
-    if (boards.length > 0) {
-      const boardsToInsert = boards.map(board => ({
-        account_id: accountId,
-        board_id: board.id,
-        board_name: board.name,
-        description: board.description || null,
-        pin_count: board.pin_count || 0,
-        follower_count: board.follower_count || 0,
-        privacy: board.privacy || 'PUBLIC',
-        created_at: now,
-        updated_at: now,
-      }));
-
-      const { error: boardsError } = await supabaseAdmin
-        .from('pin_boards')
-        .insert(boardsToInsert);
-
-      if (boardsError) {
-        console.error('Boards insert error:', boardsError);
-        // Don't fail the whole operation, just log it
-      }
+    // Step 5: Sync boards in place so scheduled Pins keep their board
+    try {
+      await syncBoards(supabaseAdmin as unknown as BoardSyncClient, accountId, boards);
+    } catch (boardsError) {
+      console.error('Boards sync error:', boardsError);
+      // Don't fail the whole operation, just log it
     }
 
     return new Response(
