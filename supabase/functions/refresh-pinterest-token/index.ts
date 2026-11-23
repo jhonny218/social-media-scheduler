@@ -8,9 +8,14 @@ serve(async (req: Request) => {
   const corsResponse = handleCors(req);
   if (corsResponse) return corsResponse;
 
+  // Read once: the error path below needs them, and the body can't be read twice.
+  let accountId: string | undefined;
+  let userId: string | undefined;
+
   try {
     const { user } = await getUserFromRequest(req);
-    const { accountId } = await req.json();
+    userId = user.id;
+    ({ accountId } = await req.json());
 
     if (!accountId) {
       return new Response(
@@ -69,7 +74,8 @@ serve(async (req: Request) => {
         is_connected: true,
         updated_at: now,
       })
-      .eq('id', accountId);
+      .eq('id', accountId)
+      .eq('user_id', user.id);
 
     if (updateError) {
       console.error('Update error:', updateError);
@@ -100,20 +106,22 @@ serve(async (req: Request) => {
     console.error('Pinterest token refresh error:', error);
     const message = error instanceof Error ? error.message : 'Failed to refresh token';
 
-    // Mark account as disconnected if token refresh fails
-    try {
-      const { accountId } = await req.clone().json();
-      const supabaseAdmin = createSupabaseAdmin();
+    // Mark the caller's own account as disconnected if token refresh fails
+    if (accountId && userId) {
+      try {
+        const supabaseAdmin = createSupabaseAdmin();
 
-      await supabaseAdmin
-        .from('pin_accounts')
-        .update({
-          is_connected: false,
-          updated_at: new Date().toISOString(),
-        })
-        .eq('id', accountId);
-    } catch {
-      // Ignore cleanup errors
+        await supabaseAdmin
+          .from('pin_accounts')
+          .update({
+            is_connected: false,
+            updated_at: new Date().toISOString(),
+          })
+          .eq('id', accountId)
+          .eq('user_id', userId);
+      } catch {
+        // Ignore cleanup errors
+      }
     }
 
     return new Response(

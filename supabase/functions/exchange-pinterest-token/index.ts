@@ -3,16 +3,9 @@ import { corsHeaders, handleCors } from '../_shared/cors.ts';
 import { createSupabaseAdmin, getUserFromRequest } from '../_shared/supabase.ts';
 import { getUserProfile, getUserBoards } from '../_shared/pinterest.ts';
 import { syncBoards, type BoardSyncClient } from '../_shared/pin-boards.ts';
+import { parseTokenResponse } from '../_shared/pinterest-token.ts';
 
 const PINTEREST_OAUTH_URL = 'https://api.pinterest.com/v5/oauth/token';
-
-interface TokenResponse {
-  access_token: string;
-  refresh_token: string;
-  token_type: string;
-  expires_in: number;
-  scope: string;
-}
 
 serve(async (req: Request) => {
   const corsResponse = handleCors(req);
@@ -58,19 +51,11 @@ serve(async (req: Request) => {
       }),
     });
 
+    // The body holds the access and refresh tokens: log only the status.
     const tokenText = await tokenResponse.text();
-    console.log('Token response:', tokenText);
+    console.log('Token response status:', tokenResponse.status);
 
-    let tokenData: TokenResponse & { error?: string; error_description?: string };
-    try {
-      tokenData = JSON.parse(tokenText);
-    } catch {
-      throw new Error(`Invalid token response: ${tokenText}`);
-    }
-
-    if (tokenData.error || !tokenData.access_token) {
-      throw new Error(tokenData.error_description || tokenData.error || 'Failed to exchange authorization code');
-    }
+    const tokenData = parseTokenResponse(tokenResponse.status, tokenText);
 
     // Step 2: Get user profile
     console.log('Fetching Pinterest user profile...');
