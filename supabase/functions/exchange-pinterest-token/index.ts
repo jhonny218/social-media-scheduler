@@ -2,16 +2,10 @@ import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
 import { corsHeaders, handleCors } from '../_shared/cors.ts';
 import { createSupabaseAdmin, getUserFromRequest } from '../_shared/supabase.ts';
 import { getUserProfile, getUserBoards } from '../_shared/pinterest.ts';
+import { syncBoards, type BoardSyncClient } from '../_shared/pin-boards.ts';
+import { parseTokenResponse } from '../_shared/pinterest-token.ts';
 
 const PINTEREST_OAUTH_URL = 'https://api.pinterest.com/v5/oauth/token';
-
-interface TokenResponse {
-  access_token: string;
-  refresh_token: string;
-  token_type: string;
-  expires_in: number;
-  scope: string;
-}
 
 serve(async (req: Request) => {
   const corsResponse = handleCors(req);
@@ -57,19 +51,11 @@ serve(async (req: Request) => {
       }),
     });
 
+    // The body holds the access and refresh tokens: log only the status.
     const tokenText = await tokenResponse.text();
-    console.log('Token response:', tokenText);
+    console.log('Token response status:', tokenResponse.status);
 
-    let tokenData: TokenResponse & { error?: string; error_description?: string };
-    try {
-      tokenData = JSON.parse(tokenText);
-    } catch {
-      throw new Error(`Invalid token response: ${tokenText}`);
-    }
-
-    if (tokenData.error || !tokenData.access_token) {
-      throw new Error(tokenData.error_description || tokenData.error || 'Failed to exchange authorization code');
-    }
+    const tokenData = parseTokenResponse(tokenResponse.status, tokenText);
 
     // Step 2: Get user profile
     console.log('Fetching Pinterest user profile...');
@@ -145,35 +131,12 @@ serve(async (req: Request) => {
       accountId = insertedAccount.id;
     }
 
-    // Step 5: Sync boards
-    // First, delete existing boards for this account (they'll be re-added)
-    await supabaseAdmin
-      .from('pin_boards')
-      .delete()
-      .eq('account_id', accountId);
-
-    // Insert fresh boards
-    if (boards.length > 0) {
-      const boardsToInsert = boards.map(board => ({
-        account_id: accountId,
-        board_id: board.id,
-        board_name: board.name,
-        description: board.description || null,
-        pin_count: board.pin_count || 0,
-        follower_count: board.follower_count || 0,
-        privacy: board.privacy || 'PUBLIC',
-        created_at: now,
-        updated_at: now,
-      }));
-
-      const { error: boardsError } = await supabaseAdmin
-        .from('pin_boards')
-        .insert(boardsToInsert);
-
-      if (boardsError) {
-        console.error('Boards insert error:', boardsError);
-        // Don't fail the whole operation, just log it
-      }
+    // Step 5: Sync boards in place so scheduled Pins keep their board
+    try {
+      await syncBoards(supabaseAdmin as unknown as BoardSyncClient, accountId, boards);
+    } catch (boardsError) {
+      console.error('Boards sync error:', boardsError);
+      // Don't fail the whole operation, just log it
     }
 
     return new Response(

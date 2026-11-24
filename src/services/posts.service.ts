@@ -250,6 +250,41 @@ export class PostsService {
     return data.id;
   }
 
+  // Hand a draft to the publisher by moving it to 'scheduled'. The publisher cron
+  // only acts on 'scheduled' rows. Filtering on the old status server-side (not
+  // reading it first) means a draft that changed in between is never overwritten.
+  // Only a draft of this user whose time is still ahead, in the same request: a modal left open
+  // since before the time passed can't hand the publisher a post that is already late.
+  async scheduleDraft(postId: string): Promise<void> {
+    const now = new Date().toISOString();
+    const { data, error } = await supabase
+      .from(TABLES.SCHEDULED_POSTS)
+      .update({ status: 'scheduled', updated_at: now })
+      .eq('id', postId)
+      .eq('user_id', this.userId)
+      .eq('status', 'draft')
+      .gt('scheduled_time', now)
+      .select('id');
+
+    if (error) {
+      throw new Error(`Failed to schedule post: ${error.message}`);
+    }
+
+    if (!data || data.length === 0) {
+      // Nothing changed: say why, from the row as it is now.
+      const { data: row } = await supabase
+        .from(TABLES.SCHEDULED_POSTS)
+        .select('status, scheduled_time')
+        .eq('id', postId)
+        .eq('user_id', this.userId)
+        .maybeSingle();
+      if (row && row.status === 'draft') {
+        throw new Error('The time has passed. Change it first.');
+      }
+      throw new Error('This post is no longer a draft');
+    }
+  }
+
   // Update a post
   async updatePost(postId: string, updates: Partial<ScheduledPost>): Promise<void> {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
