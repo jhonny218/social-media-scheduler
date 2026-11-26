@@ -67,14 +67,55 @@ for (const name of ['scheduled-publisher', 'refresh-all-tokens']) {
   });
 }
 
+// The gateway JWT setting of every Ritmo function, as it was live on 2026-11-26 (list_edge_functions). Merges
+// auto-deploy through the Supabase GitHub integration, which reads config.toml, so the file must say exactly
+// this; a change here is a deliberate security decision.
+const LIVE_VERIFY_JWT: Record<string, boolean> = {
+  'delete-media': true,
+  'exchange-facebook-token': true,
+  'exchange-instagram-token': true,
+  'exchange-pinterest-token': true,
+  'get-account-insights': true,
+  'get-facebook-insights': true,
+  'get-post-insights': true,
+  'get-upload-url': false,
+  'mirror-instagram-media': false,
+  'publish-facebook-post': true,
+  'publish-pinterest-post': false,
+  'publish-post-now': true,
+  'refresh-all-tokens': true,
+  'refresh-instagram-token': true,
+  'refresh-pinterest-token': true,
+  'refresh-post-media': false,
+  'scheduled-publisher': true,
+  'upload-media': true,
+  'validate-instagram-connection': true,
+};
+
 Deno.test({
-  name: 'config.toml keeps the gateway JWT check off for exactly the two cron functions',
+  name: 'config.toml sets verify_jwt for every function exactly as live, the two cron functions on',
   ignore: !canRead,
   fn: () => {
     const toml = Deno.readTextFileSync(new URL('../../config.toml', import.meta.url));
-    const sections = [...toml.matchAll(/^\[functions\.([a-z0-9-]+)\]\s*\nverify_jwt = (true|false)/gm)]
-      .map((m) => `${m[1]}=${m[2]}`)
+    const sections = Object.fromEntries(
+      [...toml.matchAll(/^\[functions\.([a-z0-9-]+)\]\s*\nverify_jwt = (true|false)/gm)].map((m) => [m[1], m[2] === 'true'])
+    );
+    const headers = [...toml.matchAll(/^\[functions\.([a-z0-9-]+)\]/gm)].length;
+    assert.equal(headers, Object.keys(sections).length, 'every [functions.x] section has a verify_jwt line');
+    assert.deepEqual(sections, LIVE_VERIFY_JWT);
+    assert.equal(sections['scheduled-publisher'], true);
+    assert.equal(sections['refresh-all-tokens'], true);
+  },
+});
+
+Deno.test({
+  name: 'every function folder is listed in config.toml (a new function needs a deliberate setting)',
+  ignore: !canRead,
+  fn: () => {
+    const folders = [...Deno.readDirSync(new URL('../', import.meta.url))]
+      .filter((e) => e.isDirectory && !e.name.startsWith('_'))
+      .map((e) => e.name)
       .sort();
-    assert.deepEqual(sections, ['refresh-all-tokens=false', 'scheduled-publisher=false']);
+    assert.deepEqual(folders, Object.keys(LIVE_VERIFY_JWT).sort());
   },
 });

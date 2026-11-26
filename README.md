@@ -192,13 +192,21 @@ Deploy required functions used by the app, including:
 - `upload-media`
 - `delete-media`
 
-**The two cron functions** (`scheduled-publisher`, `refresh-all-tokens`) are started only by pg_cron and
-check an `x-cron-secret` header themselves (`supabase/functions/_shared/cronAuth.ts`). The gateway's JWT
-check is off for them in `supabase/config.toml`; always deploy from the repo so that file applies.
+**Deploys.** Merges to `main` auto-deploy the functions through the Supabase GitHub integration.
+`supabase/config.toml` sets `verify_jwt` for every function, matching what was live on 2026-11-26, so a
+deploy can't flip one. A new function needs its own line there (a test checks it). Never deploy with
+`--no-verify-jwt`.
+
+**The two cron functions** (`scheduled-publisher`, `refresh-all-tokens`) are started only by pg_cron.
+The gateway's JWT check stays **on** for them. Each cron request carries two things:
+
+- the project's **public** key for the gateway (no secret Supabase key, ever);
+- `x-cron-secret`, which the function checks itself (`supabase/functions/_shared/cronAuth.ts`) before
+  anything else. The public key ships in the web app, so this header is what keeps strangers out.
 
 - Edge Function secret `CRON_SECRET`: the same value as the Vault secret `ritmo_cron_secret`. If it is
   missing, both functions answer 500 and do nothing.
-- The cron jobs read the header value from Vault and never carry a Supabase key:
+- The cron jobs read the header value from Vault:
   `'x-cron-secret', (select decrypted_secret from vault.decrypted_secrets where name = 'ritmo_cron_secret')`.
 - Tests: `deno test --allow-read --allow-env=CRON_SECRET supabase/functions/_shared/`.
 
