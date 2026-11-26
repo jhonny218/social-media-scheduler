@@ -1,5 +1,7 @@
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
 import { corsHeaders, handleCors } from '../_shared/cors.ts';
+import { requireCronSecret } from '../_shared/cronAuth.ts';
+import { clampWithinDays, DEFAULT_WITHIN_DAYS } from '../_shared/refreshWindow.ts';
 import { createSupabaseAdmin } from '../_shared/supabase.ts';
 import { refreshLongLivedToken } from '../_shared/instagram.ts';
 import { refreshAccessToken as refreshPinterestToken } from '../_shared/pinterest.ts';
@@ -13,7 +15,7 @@ import { refreshAccessToken as refreshPinterestToken } from '../_shared/pinteres
 // The window is deliberately much wider than the publisher's 7 days: at one run
 // per day it gives ~3 weeks of retries before a token actually expires, so a few
 // consecutive failures (platform hiccup, brief outage) can't cost us an account.
-const DEFAULT_WITHIN_DAYS = 20;
+// DEFAULT_WITHIN_DAYS (20) and the cap on a caller's own window live in _shared/refreshWindow.ts.
 
 interface RefreshResult {
   platform: 'instagram' | 'pinterest';
@@ -26,6 +28,10 @@ interface RefreshResult {
 }
 
 serve(async (req: Request) => {
+  // Only pg_cron (or Jhonny with the cron secret) may start a sweep (#48): checked before anything else.
+  const denied = await requireCronSecret(req);
+  if (denied) return denied;
+
   const corsResponse = handleCors(req);
   if (corsResponse) return corsResponse;
 
@@ -36,7 +42,7 @@ serve(async (req: Request) => {
     let dryRun = false;
     try {
       const body = await req.json();
-      if (typeof body?.withinDays === 'number') withinDays = body.withinDays;
+      if (body?.withinDays !== undefined) withinDays = clampWithinDays(body.withinDays);
       if (body?.dryRun === true) dryRun = true;
     } catch {
       // No/invalid body — use defaults.

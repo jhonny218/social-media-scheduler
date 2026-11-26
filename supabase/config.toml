@@ -1,0 +1,18 @@
+# Supabase project config for Ritmo's edge functions (deploys only; there is no local stack here).
+#
+# Only the two cron-only functions are listed. pg_cron calls them with no JWT: they check the
+# x-cron-secret header themselves (_shared/cronAuth.ts, security review #40, #48), so the gateway's JWT
+# check must stay off. Without this file a plain `supabase functions deploy` would turn it on and every
+# cron run would get a 401, silently stopping publishing.
+#
+# Every other function is not listed, so it deploys exactly as it did before this file existed (the CLI's
+# default, verify_jwt = true); they all check the signed-in Ritmo user in code (getUserFromRequest).
+
+# Project ref from the Supabase URL (https://pswesunrhujmyvxztsam.supabase.co).
+project_id = "pswesunrhujmyvxztsam"
+
+[functions.scheduled-publisher]
+verify_jwt = false
+
+[functions.refresh-all-tokens]
+verify_jwt = false

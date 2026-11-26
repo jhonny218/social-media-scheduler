@@ -192,6 +192,16 @@ Deploy required functions used by the app, including:
 - `upload-media`
 - `delete-media`
 
+**The two cron functions** (`scheduled-publisher`, `refresh-all-tokens`) are started only by pg_cron and
+check an `x-cron-secret` header themselves (`supabase/functions/_shared/cronAuth.ts`). The gateway's JWT
+check is off for them in `supabase/config.toml`; always deploy from the repo so that file applies.
+
+- Edge Function secret `CRON_SECRET`: the same value as the Vault secret `ritmo_cron_secret`. If it is
+  missing, both functions answer 500 and do nothing.
+- The cron jobs read the header value from Vault and never carry a Supabase key:
+  `'x-cron-secret', (select decrypted_secret from vault.decrypted_secrets where name = 'ritmo_cron_secret')`.
+- Tests: `deno test --allow-read --allow-env=CRON_SECRET supabase/functions/_shared/`.
+
 ### Install and Run
 
 ```bash

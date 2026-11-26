@@ -1,6 +1,8 @@
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
 import { SupabaseClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { corsHeaders, handleCors } from '../_shared/cors.ts';
+import { requireCronSecret } from '../_shared/cronAuth.ts';
+import { claimScheduledPost, CLAIM_FAILED, NOT_CLAIMED } from '../_shared/postClaim.ts';
 import { createSupabaseAdmin } from '../_shared/supabase.ts';
 import { getCdnUrl, uploadFile } from '../_shared/bunny.ts';
 import {
@@ -146,13 +148,8 @@ async function publishPost(
   post: ScheduledPost,
   account: InstagramAccount
 ): Promise<{ success: boolean; error?: string; platformPostId?: string; permalink?: string }> {
+  // The post is already claimed (status 'publishing') by the main loop (#49, #51).
   try {
-    // Update status to publishing
-    await supabaseAdmin
-      .from('sch_scheduled_posts')
-      .update({ status: 'publishing', updated_at: new Date().toISOString() })
-      .eq('id', post.id);
-
     // Get CDN URLs for media
     const { mediaWithUrls, reelCoverUrl } = getMediaWithUrls(post);
 
@@ -352,13 +349,8 @@ async function publishFacebookPost(
   post: ScheduledPost,
   page: FacebookPage
 ): Promise<{ success: boolean; error?: string; platformPostId?: string; permalink?: string }> {
+  // The post is already claimed (status 'publishing') by the main loop (#49, #51).
   try {
-    // Update status to publishing
-    await supabaseAdmin
-      .from('sch_scheduled_posts')
-      .update({ status: 'publishing', updated_at: new Date().toISOString() })
-      .eq('id', post.id);
-
     // Get CDN URLs for media
     const { mediaWithUrls } = getMediaWithUrls(post);
 
@@ -463,13 +455,8 @@ async function publishPinterestPost(
   account: PinterestAccount,
   board: PinterestBoard
 ): Promise<{ success: boolean; error?: string; platformPostId?: string; permalink?: string }> {
+  // The post is already claimed (status 'publishing') by the main loop (#49, #51).
   try {
-    // Update status to publishing
-    await supabaseAdmin
-      .from('sch_scheduled_posts')
-      .update({ status: 'publishing', updated_at: new Date().toISOString() })
-      .eq('id', post.id);
-
     // Get CDN URLs for media
     const { mediaWithUrls } = getMediaWithUrls(post);
 
@@ -547,6 +534,10 @@ async function publishPinterestPost(
 }
 
 serve(async (req: Request) => {
+  // Only pg_cron may start a run (#48): checked before anything else, nothing read or echoed first.
+  const denied = await requireCronSecret(req);
+  if (denied) return denied;
+
   // Handle CORS for manual invocation
   const corsResponse = handleCors(req);
   if (corsResponse) return corsResponse;
@@ -588,7 +579,7 @@ serve(async (req: Request) => {
 
     console.log(`Found ${duePosts.length} posts due for publishing`);
 
-    const results: Array<{ postId: string; success: boolean; error?: string }> = [];
+    const results: Array<{ postId: string; success: boolean; skipped?: boolean; error?: string }> = [];
 
     for (const post of duePosts as ScheduledPost[]) {
       const platform = post.platform || 'instagram'; // Default to Instagram for backwards compatibility
@@ -610,12 +601,25 @@ serve(async (req: Request) => {
               'Publishing was interrupted (likely a timeout during media processing) and did not complete. Check the platform before retrying to avoid a duplicate post.',
             updated_at: new Date().toISOString(),
           })
-          .eq('id', post.id);
+          .eq('id', post.id)
+          // Only if it is still stale: a run that has since finished or re-claimed it keeps its status.
+          .eq('status', 'publishing')
+          .lte('updated_at', stalePublishingBefore);
         results.push({
           postId: post.id,
           success: false,
           error: 'Recovered stale publishing post',
         });
+        continue;
+      }
+
+      // Claim the post before anything else touches it (#49), including the token refreshes below (#51):
+      // only the run that gets the row refreshes and publishes. Every later failure path marks the post
+      // 'failed'; if the run dies after claiming, the stale recovery above marks it failed after 10 minutes.
+      const claim = await claimScheduledPost(supabaseAdmin, post.id);
+      if (!claim.claimed) {
+        if (claim.error) console.error(`Could not claim post ${post.id}: ${claim.error}`);
+        results.push({ postId: post.id, success: false, skipped: true, error: claim.error ? CLAIM_FAILED : NOT_CLAIMED });
         continue;
       }
 
@@ -782,12 +786,14 @@ serve(async (req: Request) => {
     }
 
     const successful = results.filter((r) => r.success).length;
-    const failed = results.filter((r) => !r.success).length;
+    const skipped = results.filter((r) => r.skipped).length;
+    const failed = results.filter((r) => !r.success && !r.skipped).length;
 
     return new Response(
       JSON.stringify({
         message: `Processed ${results.length} posts`,
         successful,
+        skipped,
         failed,
         results,
       }),
