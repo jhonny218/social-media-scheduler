@@ -1,0 +1,75 @@
+# Supabase project config for Ritmo's edge functions (deploys only; there is no local stack here).
+#
+# Merges to main auto-deploy through the Supabase GitHub integration, which reads this file. Every
+# function is listed with the gateway JWT setting it had live on 2026-11-26 (read with
+# list_edge_functions), so no deploy can flip one by accident. Change a value only on purpose, and update
+# the test in supabase/functions/_shared/cronAuth.test.ts with it.
+#
+# scheduled-publisher and refresh-all-tokens keep verify_jwt = true (Jhonny, 2026-11-26): pg_cron sends
+# the project's public key for the gateway, and the function itself checks x-cron-secret
+# (_shared/cronAuth.ts, security review #40, #48). The public key alone gets past the gateway, so the
+# function check is what keeps strangers out.
+
+# Project ref from the Supabase URL (https://pswesunrhujmyvxztsam.supabase.co).
+project_id = "pswesunrhujmyvxztsam"
+
+# Called only by pg_cron: public key at the gateway, x-cron-secret in the function.
+[functions.scheduled-publisher]
+verify_jwt = true
+
+[functions.refresh-all-tokens]
+verify_jwt = true
+
+# Called by the Ritmo web app or the Ritmo tool with a signed-in user's token.
+[functions.delete-media]
+verify_jwt = true
+
+[functions.exchange-facebook-token]
+verify_jwt = true
+
+[functions.exchange-instagram-token]
+verify_jwt = true
+
+[functions.exchange-pinterest-token]
+verify_jwt = true
+
+[functions.get-account-insights]
+verify_jwt = true
+
+[functions.get-facebook-insights]
+verify_jwt = true
+
+[functions.get-post-insights]
+verify_jwt = true
+
+[functions.publish-facebook-post]
+verify_jwt = true
+
+[functions.publish-post-now]
+verify_jwt = true
+
+[functions.refresh-instagram-token]
+verify_jwt = true
+
+[functions.refresh-pinterest-token]
+verify_jwt = true
+
+[functions.upload-media]
+verify_jwt = true
+
+[functions.validate-instagram-connection]
+verify_jwt = true
+
+# Live with the gateway check off (as of 2026-11-26). Each checks the signed-in user in code
+# (getUserFromRequest). Kept as they are; turning them on is a separate decision.
+[functions.get-upload-url]
+verify_jwt = false
+
+[functions.mirror-instagram-media]
+verify_jwt = false
+
+[functions.publish-pinterest-post]
+verify_jwt = false
+
+[functions.refresh-post-media]
+verify_jwt = false
