@@ -67,9 +67,9 @@ for (const name of ['scheduled-publisher', 'refresh-all-tokens']) {
   });
 }
 
-// The gateway JWT setting of every Ritmo function, as it was live on 2026-11-26 (list_edge_functions). Merges
-// auto-deploy through the Supabase GitHub integration, which reads config.toml, so the file must say exactly
-// this; a change here is a deliberate security decision.
+// The gateway JWT setting of every Ritmo function, as it was live on 2026-11-26 (list_edge_functions). Deploys
+// from the repo root read config.toml, so the file must say exactly this; a change here is a deliberate
+// security decision.
 const LIVE_VERIFY_JWT: Record<string, boolean> = {
   'delete-media': true,
   'exchange-facebook-token': true,
