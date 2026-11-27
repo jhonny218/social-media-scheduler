@@ -2,6 +2,7 @@ import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
 import { corsHeaders, handleCors } from '../_shared/cors.ts';
 import { createSupabaseAdmin, getUserFromRequest } from '../_shared/supabase.ts';
 import { uploadFromUrl, getCdnUrl } from '../_shared/bunny.ts';
+import { redactUrl } from '../_shared/redact.ts';
 
 interface PostMedia {
   id: string;
@@ -106,7 +107,7 @@ serve(async (req) => {
 
         // Check if this is an Instagram URL we can try to mirror
         if (!isInstagramCdnUrl(item.url)) {
-          console.log(`  Media ${item.id} is not an Instagram URL: ${item.url.substring(0, 50)}...`);
+          console.log(`  Media ${item.id} is not an Instagram URL: ${redactUrl(item.url)}`);
           updatedMedia.push(item);
           continue;
         }
@@ -116,7 +117,7 @@ serve(async (req) => {
           const storagePath = generatePath(item.id, item.type);
 
           // Upload to Bunny
-          console.log(`  Mirroring media ${item.id} (${item.type}) from: ${item.url.substring(0, 80)}...`);
+          console.log(`  Mirroring media ${item.id} (${item.type}) from: ${redactUrl(item.url)}`);
           const result = await uploadFromUrl(storagePath, item.url);
 
           const updatedItem: PostMedia = {

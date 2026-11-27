@@ -2,6 +2,7 @@ import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
 import { corsHeaders, handleCors } from '../_shared/cors.ts';
 import { createSupabaseAdmin, getUserFromRequest } from '../_shared/supabase.ts';
 import { getUserInsights } from '../_shared/instagram.ts';
+import { fetchSafe } from '../_shared/redact.ts';
 
 const INSTAGRAM_GRAPH_API = 'https://graph.facebook.com/v18.0';
 
@@ -42,7 +43,7 @@ serve(async (req) => {
     }
 
     // Get user profile for followers count and media count
-    const profileResponse = await fetch(
+    const profileResponse = await fetchSafe(
       `${INSTAGRAM_GRAPH_API}/${account.ig_user_id}?fields=followers_count,media_count&access_token=${account.access_token}`
     );
     const profileData = await profileResponse.json();

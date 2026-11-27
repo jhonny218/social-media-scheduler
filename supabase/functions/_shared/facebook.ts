@@ -1,5 +1,7 @@
 // Facebook Graph API utilities
 
+import { fetchSafe } from './redact.ts';
+
 const FACEBOOK_GRAPH_API = 'https://graph.facebook.com/v24.0';
 
 export interface FacebookPage {
@@ -33,9 +35,9 @@ async function getPagesFromBusinessAccounts(
   const businessUrl = `${FACEBOOK_GRAPH_API}/me/businesses?access_token=${userAccessToken}`;
   console.log('Fetching user businesses...');
 
-  const businessResponse = await fetch(businessUrl);
+  const businessResponse = await fetchSafe(businessUrl);
   const businessText = await businessResponse.text();
-  console.log('Businesses response:', businessText);
+  console.log('Businesses response status:', businessResponse.status);
 
   let businessData;
   try {
@@ -64,9 +66,10 @@ async function getPagesFromBusinessAccounts(
     console.log(`Fetching pages for business: ${business.name} (${business.id})`);
 
     const pagesUrl = `${FACEBOOK_GRAPH_API}/${business.id}/owned_pages?fields=id,name,access_token,category,picture,fan_count&access_token=${userAccessToken}`;
-    const pagesResponse = await fetch(pagesUrl);
+    const pagesResponse = await fetchSafe(pagesUrl);
+    // The body holds every page's access token: log only the status.
     const pagesText = await pagesResponse.text();
-    console.log(`Business ${business.id} pages response:`, pagesText);
+    console.log(`Business ${business.id} pages response status:`, pagesResponse.status);
 
     let pagesData;
     try {
@@ -98,23 +101,24 @@ export async function getPageAccessTokens(
 }>> {
   // First, let's debug what user we're acting as
   const meUrl = `${FACEBOOK_GRAPH_API}/me?fields=id,name&access_token=${userAccessToken}`;
-  const meResponse = await fetch(meUrl);
-  const meText = await meResponse.text();
-  console.log('Me response:', meText);
+  const meResponse = await fetchSafe(meUrl);
+  await meResponse.text();
+  console.log('Me response status:', meResponse.status);
 
   // Try getting pages directly first
-  const url = `${FACEBOOK_GRAPH_API}/me/accounts?fields=id,name,access_token,category,picture,fan_count&access_token=${userAccessToken}`;
+  const accountsUrl = `${FACEBOOK_GRAPH_API}/me/accounts?fields=id,name,access_token,category,picture,fan_count&access_token=${userAccessToken}`;
   console.log('Fetching user pages...');
 
-  const response = await fetch(url);
+  const response = await fetchSafe(accountsUrl);
+  // The body holds every page's access token: log only the status.
   const responseText = await response.text();
-  console.log('Pages response:', responseText);
+  console.log('Pages response status:', response.status);
 
   let data;
   try {
     data = JSON.parse(responseText);
   } catch {
-    throw new Error(`Invalid response from Facebook: ${responseText}`);
+    throw new Error(`Invalid response from Facebook (status ${response.status})`);
   }
 
   if (data.error) {
@@ -168,19 +172,19 @@ export async function createPhotoPost(
   const url = `${FACEBOOK_GRAPH_API}/${pageId}/photos`;
   console.log('Creating photo post at:', url);
 
-  const response = await fetch(url, {
+  const response = await fetchSafe(url, {
     method: 'POST',
     body: params,
   });
 
   const responseText = await response.text();
-  console.log('Photo post response:', responseText);
+  console.log('Photo post response status:', response.status);
 
   let data;
   try {
     data = JSON.parse(responseText);
   } catch {
-    throw new Error(`Invalid response: ${responseText}`);
+    throw new Error(`Invalid response (status ${response.status})`);
   }
 
   if (data.error) {
@@ -222,19 +226,19 @@ export async function createVideoPost(
   const url = `${FACEBOOK_GRAPH_API}/${pageId}/videos`;
   console.log('Creating video post at:', url);
 
-  const response = await fetch(url, {
+  const response = await fetchSafe(url, {
     method: 'POST',
     body: params,
   });
 
   const responseText = await response.text();
-  console.log('Video post response:', responseText);
+  console.log('Video post response status:', response.status);
 
   let data;
   try {
     data = JSON.parse(responseText);
   } catch {
-    throw new Error(`Invalid response: ${responseText}`);
+    throw new Error(`Invalid response (status ${response.status})`);
   }
 
   if (data.error) {
@@ -267,19 +271,19 @@ export async function createLinkPost(
   const url = `${FACEBOOK_GRAPH_API}/${pageId}/feed`;
   console.log('Creating link/text post at:', url);
 
-  const response = await fetch(url, {
+  const response = await fetchSafe(url, {
     method: 'POST',
     body: params,
   });
 
   const responseText = await response.text();
-  console.log('Link post response:', responseText);
+  console.log('Link post response status:', response.status);
 
   let data;
   try {
     data = JSON.parse(responseText);
   } catch {
-    throw new Error(`Invalid response: ${responseText}`);
+    throw new Error(`Invalid response (status ${response.status})`);
   }
 
   if (data.error) {
@@ -314,19 +318,19 @@ export async function createAlbumPost(
     params.append('published', 'false');
     params.append('access_token', pageAccessToken);
 
-    const response = await fetch(`${FACEBOOK_GRAPH_API}/${pageId}/photos`, {
+    const response = await fetchSafe(`${FACEBOOK_GRAPH_API}/${pageId}/photos`, {
       method: 'POST',
       body: params,
     });
 
     const responseText = await response.text();
-    console.log('Unpublished photo response:', responseText);
+    console.log('Unpublished photo response status:', response.status);
 
     let data;
     try {
       data = JSON.parse(responseText);
     } catch {
-      throw new Error(`Invalid photo response: ${responseText}`);
+      throw new Error(`Invalid photo response (status ${response.status})`);
     }
 
     if (data.error) {
@@ -348,19 +352,19 @@ export async function createAlbumPost(
   });
   params.append('access_token', pageAccessToken);
 
-  const response = await fetch(`${FACEBOOK_GRAPH_API}/${pageId}/feed`, {
+  const response = await fetchSafe(`${FACEBOOK_GRAPH_API}/${pageId}/feed`, {
     method: 'POST',
     body: params,
   });
 
   const responseText = await response.text();
-  console.log('Album post response:', responseText);
+  console.log('Album post response status:', response.status);
 
   let data;
   try {
     data = JSON.parse(responseText);
   } catch {
-    throw new Error(`Invalid album response: ${responseText}`);
+    throw new Error(`Invalid album response (status ${response.status})`);
   }
 
   if (data.error) {
@@ -381,7 +385,7 @@ async function getPostPermalink(
   pageAccessToken: string
 ): Promise<string | undefined> {
   try {
-    const response = await fetch(
+    const response = await fetchSafe(
       `${FACEBOOK_GRAPH_API}/${postId}?fields=permalink_url&access_token=${pageAccessToken}`
     );
     const data = await response.json();
@@ -399,7 +403,7 @@ export async function getPostInsights(
   pageAccessToken: string,
   metrics: string[] = ['post_impressions', 'post_engaged_users', 'post_reactions_by_type_total']
 ): Promise<Record<string, number | Record<string, number>>> {
-  const response = await fetch(
+  const response = await fetchSafe(
     `${FACEBOOK_GRAPH_API}/${postId}/insights?metric=${metrics.join(',')}&access_token=${pageAccessToken}`
   );
 
@@ -427,7 +431,7 @@ export async function getPageInsights(
   metrics: string[] = ['page_impressions', 'page_engaged_users', 'page_fans'],
   period: string = 'day'
 ): Promise<Record<string, number>> {
-  const response = await fetch(
+  const response = await fetchSafe(
     `${FACEBOOK_GRAPH_API}/${pageId}/insights?metric=${metrics.join(',')}&period=${period}&access_token=${pageAccessToken}`
   );
 
@@ -452,7 +456,7 @@ export async function validatePageToken(
   pageAccessToken: string
 ): Promise<{ valid: boolean; pageId?: string; pageName?: string }> {
   try {
-    const response = await fetch(
+    const response = await fetchSafe(
       `${FACEBOOK_GRAPH_API}/me?fields=id,name&access_token=${pageAccessToken}`
     );
 
@@ -480,7 +484,7 @@ export async function extendPageToken(
   appId: string,
   appSecret: string
 ): Promise<{ accessToken: string; expiresIn?: number }> {
-  const response = await fetch(
+  const response = await fetchSafe(
     `${FACEBOOK_GRAPH_API}/oauth/access_token?` +
     `grant_type=fb_exchange_token&` +
     `client_id=${appId}&` +
