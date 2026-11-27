@@ -192,10 +192,22 @@ Deploy required functions used by the app, including:
 - `upload-media`
 - `delete-media`
 
-**Deploys.** Merges to `main` auto-deploy the functions through the Supabase GitHub integration.
-`supabase/config.toml` sets `verify_jwt` for every function, matching what was live on 2026-11-26, so a
-deploy can't flip one. A new function needs its own line there (a test checks it). Never deploy with
-`--no-verify-jwt`.
+**Deploys.** By hand, one function at a time, from the repo root:
+`supabase functions deploy <name> --project-ref pswesunrhujmyvxztsam`. The Supabase GitHub integration is
+not connected, so merging to `main` deploys nothing. `supabase/config.toml` sets `verify_jwt` for every
+function, matching what was live on 2026-11-26, so a deploy can't flip one. A new function needs its own
+line there (a test checks it). Never deploy with `--no-verify-jwt`.
+
+**The Supabase secret key.** Functions that need admin access (`createSupabaseAdmin`) read the secret key
+named **`ritmo`** from `SUPABASE_SECRET_KEYS` (`supabase/functions/_shared/secretKey.ts`), never
+`SUPABASE_SERVICE_ROLE_KEY`. If the `ritmo` key is missing (Dashboard > Settings > API Keys), they answer
+500 and touch nothing; the function log names the keys it found, never a value.
+
+> **Warning.** After the old `default` secret key was deleted (step E1 of prana-docs
+> `engineering/platform/plans/2026-11-26-s40-secret-key-move.md`), never deploy or revert
+> `supabase/functions` to a commit before `<merge SHA>`: older code reads `SUPABASE_SERVICE_ROLE_KEY`,
+> which no longer points at a live key. (`<merge SHA>` is this change's merge commit, filled in when it
+> merges.)
 
 **The two cron functions** (`scheduled-publisher`, `refresh-all-tokens`) are started only by pg_cron.
 The gateway's JWT check stays **on** for them. Each cron request carries two things:
@@ -208,7 +220,8 @@ The gateway's JWT check stays **on** for them. Each cron request carries two thi
   missing, both functions answer 500 and do nothing.
 - The cron jobs read the header value from Vault:
   `'x-cron-secret', (select decrypted_secret from vault.decrypted_secrets where name = 'ritmo_cron_secret')`.
-- Tests: `deno test --allow-read --allow-env=CRON_SECRET supabase/functions/_shared/`.
+- Tests (after `npm ci`; Deno reads `@types/node` from `package.json`):
+  `deno test --allow-read --allow-env=CRON_SECRET,SUPABASE_SECRET_KEYS supabase/functions/_shared/`.
 
 ### Install and Run
 

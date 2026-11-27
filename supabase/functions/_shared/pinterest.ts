@@ -1,5 +1,7 @@
 // Pinterest API v5 utilities
 
+import { apiError, fetchSafe, redactUrl, xmlErrorCode } from './redact.ts';
+
 const PINTEREST_API_BASE = 'https://api.pinterest.com/v5';
 
 export interface PinterestAccount {
@@ -66,7 +68,7 @@ export async function getUserProfile(
   const url = `${PINTEREST_API_BASE}/user_account`;
   console.log('Fetching Pinterest user profile...');
 
-  const response = await fetch(url, {
+  const response = await fetchSafe(url, {
     headers: {
       'Authorization': `Bearer ${accessToken}`,
       'Content-Type': 'application/json',
@@ -74,13 +76,13 @@ export async function getUserProfile(
   });
 
   const responseText = await response.text();
-  console.log('User profile response:', responseText);
+  console.log('User profile response status:', response.status);
 
   let data;
   try {
     data = JSON.parse(responseText);
   } catch {
-    throw new Error(`Invalid response from Pinterest: ${responseText}`);
+    throw new Error(`Invalid response from Pinterest (status ${response.status})`);
   }
 
   if (!response.ok || data.code) {
@@ -105,7 +107,7 @@ export async function getUserBoards(
   const url = `${PINTEREST_API_BASE}/boards?page_size=100`;
   console.log('Fetching Pinterest boards...');
 
-  const response = await fetch(url, {
+  const response = await fetchSafe(url, {
     headers: {
       'Authorization': `Bearer ${accessToken}`,
       'Content-Type': 'application/json',
@@ -113,13 +115,13 @@ export async function getUserBoards(
   });
 
   const responseText = await response.text();
-  console.log('Boards response:', responseText);
+  console.log('Boards response status:', response.status);
 
   let data;
   try {
     data = JSON.parse(responseText);
   } catch {
-    throw new Error(`Invalid response from Pinterest: ${responseText}`);
+    throw new Error(`Invalid response from Pinterest (status ${response.status})`);
   }
 
   if (!response.ok || data.code) {
@@ -157,7 +159,7 @@ export async function getUserPins(
   }
   console.log('Fetching Pinterest pins...');
 
-  const response = await fetch(url, {
+  const response = await fetchSafe(url, {
     headers: {
       'Authorization': `Bearer ${accessToken}`,
       'Content-Type': 'application/json',
@@ -165,13 +167,13 @@ export async function getUserPins(
   });
 
   const responseText = await response.text();
-  console.log('Pins response:', responseText);
+  console.log('Pins response status:', response.status);
 
   let data;
   try {
     data = JSON.parse(responseText);
   } catch {
-    throw new Error(`Invalid response from Pinterest: ${responseText}`);
+    throw new Error(`Invalid response from Pinterest (status ${response.status})`);
   }
 
   if (!response.ok || data.code) {
@@ -222,7 +224,7 @@ export async function createPin(
     body.alt_text = options.altText;
   }
 
-  const response = await fetch(url, {
+  const response = await fetchSafe(url, {
     method: 'POST',
     headers: {
       'Authorization': `Bearer ${accessToken}`,
@@ -232,13 +234,13 @@ export async function createPin(
   });
 
   const responseText = await response.text();
-  console.log('Create pin response:', responseText);
+  console.log('Create pin response status:', response.status);
 
   let data;
   try {
     data = JSON.parse(responseText);
   } catch {
-    throw new Error(`Invalid response from Pinterest: ${responseText}`);
+    throw new Error(`Invalid response from Pinterest (status ${response.status})`);
   }
 
   if (!response.ok || data.code) {
@@ -246,7 +248,7 @@ export async function createPin(
   }
 
   if (!data.id) {
-    throw new Error(`Pin ID not returned. Response: ${JSON.stringify(data)}`);
+    throw new Error(`Pin ID not returned (status ${response.status})`);
   }
 
   return {
@@ -298,7 +300,7 @@ export async function createVideoPin(
     body.alt_text = options.altText;
   }
 
-  const response = await fetch(url, {
+  const response = await fetchSafe(url, {
     method: 'POST',
     headers: {
       'Authorization': `Bearer ${accessToken}`,
@@ -308,13 +310,13 @@ export async function createVideoPin(
   });
 
   const responseText = await response.text();
-  console.log('Create video pin response:', responseText);
+  console.log('Create video pin response status:', response.status);
 
   let data;
   try {
     data = JSON.parse(responseText);
   } catch {
-    throw new Error(`Invalid response from Pinterest: ${responseText}`);
+    throw new Error(`Invalid response from Pinterest (status ${response.status})`);
   }
 
   if (!response.ok || data.code) {
@@ -341,7 +343,7 @@ export async function uploadVideo(
   const registerUrl = `${PINTEREST_API_BASE}/media`;
   console.log('Registering video upload...');
 
-  const registerResponse = await fetch(registerUrl, {
+  const registerResponse = await fetchSafe(registerUrl, {
     method: 'POST',
     headers: {
       'Authorization': `Bearer ${accessToken}`,
@@ -353,13 +355,13 @@ export async function uploadVideo(
   });
 
   const registerText = await registerResponse.text();
-  console.log('Register response:', registerText);
+  console.log('Register response status:', registerResponse.status);
 
   let registerData;
   try {
     registerData = JSON.parse(registerText);
   } catch {
-    throw new Error(`Invalid register response: ${registerText}`);
+    throw new Error(`Invalid register response (status ${registerResponse.status})`);
   }
 
   if (!registerResponse.ok || registerData.code) {
@@ -376,8 +378,8 @@ export async function uploadVideo(
 
   // Step 2: Upload the video file to the provided URL using multipart/form-data
   // Pinterest returns upload_parameters that must be included as form fields
-  console.log('Fetching video from:', options.videoUrl);
-  const videoResponse = await fetch(options.videoUrl);
+  console.log('Fetching video from:', redactUrl(options.videoUrl));
+  const videoResponse = await fetchSafe(options.videoUrl);
   if (!videoResponse.ok) {
     throw new Error('Failed to fetch video from URL');
   }
@@ -397,15 +399,16 @@ export async function uploadVideo(
   // Add the video file last (S3 requires the file field to be last)
   formData.append('file', videoBlob, 'video.mp4');
 
-  const uploadResponse = await fetch(uploadUrl, {
+  const uploadResponse = await fetchSafe(uploadUrl, {
     method: 'POST',
     body: formData,
     // Do NOT set Content-Type header — fetch will auto-set it with the correct boundary
   });
 
   if (!uploadResponse.ok) {
+    // S3-style XML errors can echo the signed upload policy: keep only the error code.
     const uploadError = await uploadResponse.text();
-    throw new Error(`Failed to upload video: ${uploadError}`);
+    throw new Error(`Failed to upload video (status ${uploadResponse.status}, ${xmlErrorCode(uploadError)})`);
   }
 
   // Step 3: Wait for processing
@@ -419,23 +422,24 @@ export async function uploadVideo(
     await new Promise(resolve => setTimeout(resolve, 5000)); // Wait 5 seconds
     attempts++;
 
-    const statusResponse = await fetch(`${PINTEREST_API_BASE}/media/${mediaId}`, {
+    const statusResponse = await fetchSafe(`${PINTEREST_API_BASE}/media/${mediaId}`, {
       headers: {
         'Authorization': `Bearer ${accessToken}`,
       },
     });
 
     const statusText = await statusResponse.text();
-    console.log(`Video status check ${attempts}:`, statusText);
 
     let statusData;
     try {
       statusData = JSON.parse(statusText);
     } catch {
+      console.log(`Video status check ${attempts}: HTTP ${statusResponse.status}, unreadable body`);
       continue;
     }
 
     status = statusData.status;
+    console.log(`Video status check ${attempts}: HTTP ${statusResponse.status}, status ${status}`);
 
     if (status === 'failed') {
       throw new Error('Video processing failed');
@@ -462,7 +466,7 @@ export async function refreshAccessToken(
 
   const credentials = btoa(`${appId}:${appSecret}`);
 
-  const response = await fetch(url, {
+  const response = await fetchSafe(url, {
     method: 'POST',
     headers: {
       'Authorization': `Basic ${credentials}`,
@@ -474,17 +478,19 @@ export async function refreshAccessToken(
     }),
   });
 
+  // The body holds the new access and refresh tokens: log and throw only the status and error fields.
   const responseText = await response.text();
-  console.log('Token refresh response:', responseText);
+  console.log('Token refresh response status:', response.status);
 
   let data;
   try {
     data = JSON.parse(responseText);
   } catch {
-    throw new Error(`Invalid token response: ${responseText}`);
+    throw new Error(`Invalid token response (status ${response.status})`);
   }
 
   if (!response.ok || data.error) {
+    console.error('Token refresh error:', apiError(data));
     throw new Error(data.error_description || data.error || 'Failed to refresh token');
   }
 

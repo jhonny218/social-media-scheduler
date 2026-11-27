@@ -1,5 +1,7 @@
 // Bunny.net Storage API utilities
 
+import { fetchSafe } from './redact.ts';
+
 const BUNNY_STORAGE_ZONE = Deno.env.get('BUNNY_STORAGE_ZONE') || '';
 const BUNNY_STORAGE_API_KEY = Deno.env.get('BUNNY_STORAGE_API_KEY') || '';
 const BUNNY_STORAGE_HOSTNAME = Deno.env.get('BUNNY_STORAGE_HOSTNAME') || 'storage.bunnycdn.com';
@@ -74,7 +76,9 @@ export async function uploadFromUrl(
   sourceUrl: string
 ): Promise<{ success: boolean; cdnUrl: string; storagePath: string }> {
   // Fetch the file from the source URL
-  const sourceResponse = await fetch(sourceUrl);
+  // Source URLs (Instagram CDN, signed storage URLs) carry signatures in the query: fetchSafe keeps them
+  // out of a network error message.
+  const sourceResponse = await fetchSafe(sourceUrl);
   if (!sourceResponse.ok) {
     throw new Error(`Failed to fetch source file: ${sourceResponse.status}`);
   }

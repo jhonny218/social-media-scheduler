@@ -1,5 +1,7 @@
 // Instagram Graph API utilities
 
+import { fetchSafe, redactUrl } from './redact.ts';
+
 const INSTAGRAM_GRAPH_API = 'https://graph.instagram.com/v24.0';
 
 export interface InstagramAccount {
@@ -111,21 +113,22 @@ export async function createMediaContainer(
 
   return withRetry(async () => {
     console.log('Creating media container at:', url);
-    console.log('Params:', params.toString());
+    // Never the params themselves: they hold the access token and signed media URLs.
+    console.log('Params:', [...params.keys()].filter((k) => k !== 'access_token').join(','));
 
-    const response = await fetch(url, {
+    const response = await fetchSafe(url, {
       method: 'POST',
       body: params,
     });
 
     const responseText = await response.text();
-    console.log('Media container response:', responseText);
+    console.log('Media container response status:', response.status);
 
     let data;
     try {
       data = JSON.parse(responseText);
     } catch {
-      throw new Error(`Invalid response from Instagram: ${responseText}`);
+      throw new Error(`Invalid response from Instagram (status ${response.status})`);
     }
 
     if (data.error) {
@@ -133,7 +136,7 @@ export async function createMediaContainer(
     }
 
     if (!data.id) {
-      throw new Error(`Media ID not returned. Response: ${JSON.stringify(data)}`);
+      throw new Error(`Media ID not returned (status ${response.status})`);
     }
 
     return { id: data.id };
@@ -161,19 +164,19 @@ export async function createCarouselContainer(
     console.log('Creating carousel container at:', url);
     console.log('Children IDs:', childrenIds.join(','));
 
-    const response = await fetch(url, {
+    const response = await fetchSafe(url, {
       method: 'POST',
       body: params,
     });
 
     const responseText = await response.text();
-    console.log('Carousel container response:', responseText);
+    console.log('Carousel container response status:', response.status);
 
     let data;
     try {
       data = JSON.parse(responseText);
     } catch {
-      throw new Error(`Invalid carousel response: ${responseText}`);
+      throw new Error(`Invalid carousel response (status ${response.status})`);
     }
 
     if (data.error) {
@@ -181,7 +184,7 @@ export async function createCarouselContainer(
     }
 
     if (!data.id) {
-      throw new Error(`Carousel ID not returned. Response: ${JSON.stringify(data)}`);
+      throw new Error(`Carousel ID not returned (status ${response.status})`);
     }
 
     return { id: data.id };
@@ -193,19 +196,19 @@ export async function checkMediaStatus(
   containerId: string,
   accessToken: string
 ): Promise<{ status: string; statusCode?: string; errorMessage?: string }> {
-  const url = `${INSTAGRAM_GRAPH_API}/${containerId}?fields=status_code,status&access_token=${accessToken}`;
-  console.log('Checking media status at:', url.replace(accessToken, '[TOKEN]'));
+  const statusUrl = `${INSTAGRAM_GRAPH_API}/${containerId}?fields=status_code,status&access_token=${accessToken}`;
+  console.log('Checking media status at:', redactUrl(statusUrl));
 
-  const response = await fetch(url);
+  const response = await fetchSafe(statusUrl);
   const responseText = await response.text();
-  console.log('Status check response:', responseText);
 
   let data;
   try {
     data = JSON.parse(responseText);
   } catch {
-    throw new Error(`Invalid status response: ${responseText}`);
+    throw new Error(`Invalid status response (status ${response.status})`);
   }
+  console.log(`Status check response: HTTP ${response.status}, status_code ${data.status_code ?? 'none'}`);
 
   if (data.error) {
     throw new Error(data.error.message || 'Failed to check media status');
@@ -290,19 +293,19 @@ export async function publishMedia(
     console.log('Publishing media at:', url);
     console.log('Container ID:', containerId);
 
-    const response = await fetch(url, {
+    const response = await fetchSafe(url, {
       method: 'POST',
       body: params,
     });
 
     const responseText = await response.text();
-    console.log('Publish response:', responseText);
+    console.log('Publish response status:', response.status);
 
     let parsed;
     try {
       parsed = JSON.parse(responseText);
     } catch {
-      throw new Error(`Invalid publish response: ${responseText}`);
+      throw new Error(`Invalid publish response (status ${response.status})`);
     }
 
     if (parsed.error) {
@@ -310,7 +313,7 @@ export async function publishMedia(
     }
 
     if (!parsed.id) {
-      throw new Error(`Published media ID not returned. Response: ${JSON.stringify(parsed)}`);
+      throw new Error(`Published media ID not returned (status ${response.status})`);
     }
 
     return parsed;
@@ -319,7 +322,7 @@ export async function publishMedia(
   // Get permalink
   let permalink: string | undefined;
   try {
-    const mediaResponse = await fetch(
+    const mediaResponse = await fetchSafe(
       `${INSTAGRAM_GRAPH_API}/${data.id}?fields=permalink&access_token=${accessToken}`
     );
     const mediaData = await mediaResponse.json();
@@ -341,7 +344,7 @@ export async function postComment(
   params.append('message', message);
   params.append('access_token', accessToken);
 
-  const response = await fetch(`${INSTAGRAM_GRAPH_API}/${mediaId}/comments`, {
+  const response = await fetchSafe(`${INSTAGRAM_GRAPH_API}/${mediaId}/comments`, {
     method: 'POST',
     body: params,
   });
@@ -359,7 +362,7 @@ export async function postComment(
 export async function refreshLongLivedToken(
   accessToken: string
 ): Promise<{ accessToken: string; expiresIn: number }> {
-  const response = await fetch(
+  const response = await fetchSafe(
     `${INSTAGRAM_GRAPH_API}/oauth/access_token?` +
       `grant_type=fb_exchange_token&` +
       `client_id=${Deno.env.get('FACEBOOK_APP_ID')}&` +
@@ -386,7 +389,7 @@ export async function getUserInsights(
   metrics: string[] = ['impressions', 'reach', 'profile_views', 'website_clicks'],
   period: string = 'day'
 ): Promise<Record<string, number>> {
-  const response = await fetch(
+  const response = await fetchSafe(
     `${INSTAGRAM_GRAPH_API}/${igUserId}/insights?` +
       `metric=${metrics.join(',')}&` +
       `period=${period}&` +
@@ -413,7 +416,7 @@ export async function getMediaInsights(
   accessToken: string,
   metrics: string[] = ['impressions', 'reach', 'engagement', 'saved', 'likes', 'comments', 'shares']
 ): Promise<Record<string, number>> {
-  const response = await fetch(
+  const response = await fetchSafe(
     `${INSTAGRAM_GRAPH_API}/${mediaId}/insights?` +
       `metric=${metrics.join(',')}&` +
       `access_token=${accessToken}`
@@ -440,7 +443,7 @@ export async function validateAccessToken(
   accessToken: string
 ): Promise<{ valid: boolean; userId?: string; expiresAt?: number }> {
   try {
-    const response = await fetch(
+    const response = await fetchSafe(
       `${INSTAGRAM_GRAPH_API}/me?fields=id,username&access_token=${accessToken}`
     );
 

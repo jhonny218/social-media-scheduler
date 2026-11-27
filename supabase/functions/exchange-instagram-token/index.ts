@@ -1,6 +1,7 @@
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
 import { corsHeaders, handleCors } from '../_shared/cors.ts';
 import { createSupabaseAdmin, getUserFromRequest } from '../_shared/supabase.ts';
+import { apiError, fetchSafe, redactUrl } from '../_shared/redact.ts';
 
 const FACEBOOK_GRAPH_API = 'https://graph.facebook.com/v18.0';
 
@@ -69,17 +70,18 @@ serve(async (req) => {
     });
 
     const tokenUrl = `${FACEBOOK_GRAPH_API}/oauth/access_token?${tokenParams.toString()}`;
-    console.log('Exchanging code at:', tokenUrl.replace(appSecret, '[REDACTED]').replace(code, '[CODE]'));
+    console.log('Exchanging code at:', redactUrl(tokenUrl));
 
-    const tokenResponse = await fetch(tokenUrl);
+    const tokenResponse = await fetchSafe(tokenUrl);
+    // The body holds the user access token: log only the status and, on failure, the error fields.
     const tokenText = await tokenResponse.text();
-    console.log('Token exchange response:', tokenText);
+    console.log('Token exchange response status:', tokenResponse.status);
 
     let tokenData: TokenResponse & { error?: { message: string; type: string; code: number } };
     try {
       tokenData = JSON.parse(tokenText);
     } catch {
-      console.error('Failed to parse token response:', tokenText);
+      console.error('Failed to parse token response, status:', tokenResponse.status);
       return new Response(
         JSON.stringify({ success: false, error: 'Invalid response from Facebook' }),
         { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
@@ -87,7 +89,7 @@ serve(async (req) => {
     }
 
     if (tokenData.error || !tokenData.access_token) {
-      console.error('Failed to exchange code for token:', tokenData);
+      console.error('Failed to exchange code for token:', apiError(tokenData.error));
       const errorMsg = tokenData.error?.message || 'Failed to exchange authorization code';
       return new Response(
         JSON.stringify({ success: false, error: errorMsg }),
@@ -103,13 +105,13 @@ serve(async (req) => {
       fb_exchange_token: tokenData.access_token,
     });
 
-    const longLivedResponse = await fetch(
+    const longLivedResponse = await fetchSafe(
       `${FACEBOOK_GRAPH_API}/oauth/access_token?${longLivedParams.toString()}`
     );
     const longLivedData: TokenResponse = await longLivedResponse.json();
 
     if (!longLivedData.access_token) {
-      console.error('Failed to get long-lived token:', longLivedData);
+      console.error('Failed to get long-lived token:', apiError((longLivedData as { error?: unknown }).error));
       return new Response(
         JSON.stringify({ success: false, error: 'Failed to get long-lived access token' }),
         { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
@@ -123,9 +125,10 @@ serve(async (req) => {
     const pagesUrl = `${FACEBOOK_GRAPH_API}/me/accounts?fields=id,name,access_token,instagram_business_account&access_token=${longLivedToken}`;
     console.log('Fetching pages...');
 
-    const pagesResponse = await fetch(pagesUrl);
+    const pagesResponse = await fetchSafe(pagesUrl);
+    // The body holds every page's access token: log only the status.
     const pagesText = await pagesResponse.text();
-    console.log('Pages response:', pagesText);
+    console.log('Pages response status:', pagesResponse.status);
 
     let pagesData: PageResponse & { error?: { message: string } };
     try {
@@ -148,9 +151,9 @@ serve(async (req) => {
 
     if (!pagesData.data || pagesData.data.length === 0) {
       // Try to get user info to debug
-      const meResponse = await fetch(`${FACEBOOK_GRAPH_API}/me?fields=id,name&access_token=${longLivedToken}`);
+      const meResponse = await fetchSafe(`${FACEBOOK_GRAPH_API}/me?fields=id,name&access_token=${longLivedToken}`);
       const meData = await meResponse.json();
-      console.log('User info:', meData);
+      console.log('User info: id', meData.id ?? 'none', apiError(meData.error));
 
       return new Response(
         JSON.stringify({
@@ -184,7 +187,7 @@ serve(async (req) => {
       const igAccountId = page.instagram_business_account!.id;
 
       // Get Instagram account details
-      const igResponse = await fetch(
+      const igResponse = await fetchSafe(
         `${FACEBOOK_GRAPH_API}/${igAccountId}?fields=id,username,name,account_type,profile_picture_url,followers_count&access_token=${page.access_token}`
       );
       const igProfile: InstagramProfile = await igResponse.json();

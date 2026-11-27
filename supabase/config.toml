@@ -1,7 +1,8 @@
 # Supabase project config for Ritmo's edge functions (deploys only; there is no local stack here).
 #
-# Merges to main auto-deploy through the Supabase GitHub integration, which reads this file. Every
-# function is listed with the gateway JWT setting it had live on 2026-11-26 (read with
+# Functions are deployed by hand from the repo root (`supabase functions deploy <name> --project-ref
+# pswesunrhujmyvxztsam`), which reads this file. The Supabase GitHub integration is not connected, so
+# merging to main deploys nothing. Never deploy with --no-verify-jwt. Every function is listed with the gateway JWT setting it had live on 2026-11-26 (read with
 # list_edge_functions), so no deploy can flip one by accident. Change a value only on purpose, and update
 # the test in supabase/functions/_shared/cronAuth.test.ts with it.
 #

@@ -2,6 +2,7 @@ import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
 import { corsHeaders, handleCors } from '../_shared/cors.ts';
 import { createSupabaseAdmin, getUserFromRequest } from '../_shared/supabase.ts';
 import { getPageAccessTokens, extendPageToken } from '../_shared/facebook.ts';
+import { fetchSafe } from '../_shared/redact.ts';
 
 const FACEBOOK_GRAPH_API = 'https://graph.facebook.com/v24.0';
 
@@ -40,15 +41,16 @@ serve(async (req: Request) => {
 
     console.log('Exchanging code for token...');
 
-    const tokenResponse = await fetch(tokenUrl);
+    const tokenResponse = await fetchSafe(tokenUrl);
+    // The body holds the user access token: log only the status.
     const tokenText = await tokenResponse.text();
-    console.log('Token response:', tokenText);
+    console.log('Token response status:', tokenResponse.status);
 
     let tokenData;
     try {
       tokenData = JSON.parse(tokenText);
     } catch {
-      throw new Error(`Invalid token response: ${tokenText}`);
+      throw new Error(`Invalid token response (status ${tokenResponse.status})`);
     }
 
     if (tokenData.error) {
